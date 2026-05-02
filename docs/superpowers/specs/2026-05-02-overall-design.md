@@ -638,7 +638,72 @@ Bottom buttons:
 
 ---
 
-## 11. Implementation slicing — handoff to writing-plans
+## 11. Cross-cutting design constraints
+
+三条横切关注，不是单独的 feature 而是约束所有 slice 的全局规则。**day one 落地**——retrofit 都很贵。
+
+### 11.1 Internationalisation (i18n)
+
+**决定**：框架从 day one i18n-ready，**v1 只 ship 英文**。
+
+| 维度 | 约束 |
+|---|---|
+| Frontend | 用 `react-i18next`（或同类）。所有用户可见字符串走 `t('namespace.key')`，**禁止 hardcode**。namespace 按页面 / 组件分。 |
+| Backend | API 错误响应返回 `{ error_code, error_message_en }`，前端按 `error_code` 翻译。错误消息**不**直接返回给终端用户的字面量。 |
+| Date / number / currency | 走 `Intl.*` API，即使 default `en-US` 也用 locale-aware 函数 |
+| 默认 + 仅 ship locale (v1) | `en` |
+| Catalog 文件 | 仅填 `locales/en.json`，结构上为后续 zh / ja 留位 |
+
+**理由**：doc-intel-legacy 后期才加 i18n，hardcoded 字符串散落各处需要补丁式修复。emerge 拒绝重蹈覆辙——这是经典 cheap-now-expensive-later。成本 ~10% 前端 / <5% 后端代码量；回报：v2 加任何语言 = 翻译 catalog，无代码改动。
+
+### 11.2 Theme: light + dark from day one
+
+**决定**：light / dark / system 三模式从 day one 实现，用 **semantic color tokens + CSS variables**。
+
+| 维度 | 约束 |
+|---|---|
+| Token 命名 | `bg-surface`、`bg-elevated`、`text-fg-primary`、`text-fg-muted`、`border-default`、`border-strong`、`accent-primary`、`status-success` 等。**禁止**用 Tailwind 直接 color class（`bg-gray-100`、`text-white` 等）。 |
+| 实现 | CSS variables：`:root { --bg-surface: white; … }` / `.dark { --bg-surface: #0a0a0a; … }`。Tailwind 配置把 token name 映射到 CSS var。 |
+| Switch | 加 `.dark` class 到 `<html>`，用户可选 `light` / `dark` / `system`（跟随 `prefers-color-scheme`），偏好持久化到 localStorage。 |
+| 默认 | `system` |
+| 第三方 | shadcn/ui 默认就是这套 token 体系，可作为起点（不锁定） |
+| QA 要求 | 每个 PR 的截图 / Playwright 验收必须覆盖 light + dark 双模式 |
+
+**理由**：doc-intel-legacy 经历过加 theme 后被迫 revert（参考 commit `c801738 revert(frontend): remove dark/light/system theme switcher`）。教训很清晰：theme retrofit 极难——每个 hardcoded color 都得改；hover/focus/disabled 状态在两个 mode 下各自需要调；颜色对比度问题 case-by-case。day one 多 ~5% 组件开发量，远便宜过事后补丁。
+
+### 11.3 UI style direction
+
+**决定**：**借 label-studio 的 workflow / 信息架构，不照搬它的视觉**。
+
+| 维度 | 跟随 label-studio | 自己重做 |
+|---|---|---|
+| Data Manager 列表（筛选 / 排序 / 批量动作） | ✅ 信息架构和列模型照搬 | — |
+| 两栏 workspace 布局（doc preview + 字段编辑） | ✅ 整体 layout 照搬 | — |
+| 工作流模式（doc list → 进 workspace → 矫正 → 回 list） | ✅ 照搬 | — |
+| 视觉风格（颜色 / 字体 / 留白 / 圆角） | ❌ | 现代克制：Tailwind + CSS var token system |
+| 控件库 | ❌ 不用 antd | Radix（headless）+ shadcn/ui 风格 |
+| 图标 | ❌ 不用 LS 自带 | Lucide 或 Phosphor |
+| Brand 色 | ❌ | 单一 accent 色（暂定 emerald-600，可调） |
+
+**为什么不像素级照抄 LS**：
+1. LS 视觉一眼像企业标注平台，与 emerge "software 3.0 工具"叙事不匹配
+2. LS 基于 antd，与 §11.2 day-one dark theme 兼容性差
+3. 团队的"熟悉感"靠**操作流程**（信息架构）保证就够，不需要靠 CSS 像素位置——前者帮你 6 个月不变，后者 6 个月后第一次想加新模块就别扭
+
+最终风格目标：参考 Linear / Vercel / Cursor 的视觉调性——克制现代、单色调主导、一个 accent，留白宽，圆角小到中等。
+
+### 11.4 这三点对 R8 的影响
+
+R8 plan 必须在第一个 task 就建立：
+- i18n catalog 与 hook（`useT`）
+- token system（CSS vars + Tailwind config）
+- 基础组件（Button / Input / Card / Table 等）的 light/dark/i18n 三重适配
+
+后续所有 R8 task 在这三层基础上叠。如果中途发现 hardcoded 字符串或颜色，应当作 R8 内部的 bug 处理，立即修。
+
+---
+
+## 12. Implementation slicing — handoff to writing-plans
 
 This document is intentionally a **single overall design** rather than feature-cut sub-specs. The next step (writing-plans) decomposes it into implementable slices. Suggested slicing for the planning agent:
 
@@ -651,7 +716,7 @@ This document is intentionally a **single overall design** rather than feature-c
 | **R5 — Confidence Loop & Calibration** | Judge integration; counterexample regression computation; JudgeCalibration table + Beta updates; UI surfacing of human review queue | R4 |
 | **R6 — AutoResearch** | AutoResearchRun table; Reflexion loop; action toolkit dispatch（仅文本类 action）；turn history rendering; manual + semi-automatic triggers | R5 |
 | **R7 — Templates & API publish** | Template table + 5 builtin seeders（仅 schema descriptions）; Save-as-Template; API publish + key + feedback routing; rate limiting | R3 (parallel to R4) |
-| **R8 — UI** | Document list page; Workspace correction view (2-column); Schema editor panel（核心面）; AutoResearch run viewer; Project page header / publish flow | R2 onwards, in parallel with backend slices |
+| **R8 — UI** | **首要 task：建立 §11 的三层底座**（i18n catalog + `useT` hook、light/dark token system、Radix/shadcn 基础组件）；之后才铺 Document list page、Workspace correction view (2-column)、Schema editor panel（核心面）、AutoResearch run viewer、Project page header / publish flow | R2 onwards, in parallel with backend slices |
 
 R1, R2, R3 是串行 foundation。R4–R7 可以双人并行。R8 跟随每个后端 slice 落地。
 
@@ -665,12 +730,12 @@ writing-plans is the proper next phase to translate this into per-slice plans wi
 
 ---
 
-## 12. Open questions deferred to writing-plans
+## 13. Open questions deferred to writing-plans
 
 These are intentionally not pinned in this design. They will surface naturally during plan-writing and should be resolved there:
 
 1. **Backend stack choice** — FastAPI + async SQLAlchemy + SQLite (matching doc-intel-legacy's stack) is the obvious default; whether to start with PostgreSQL instead for production readiness is a R1 decision.
-2. **Frontend stack choice** — Vite + React + TypeScript + Zustand (matching doc-intel-legacy) is again the default; alternatives are a R8 decision and probably not worth deviating.
+2. **Frontend stack choice** — Vite + React + TypeScript + Zustand (matching doc-intel-legacy) is the default; need to layer i18n（推荐 `react-i18next`）+ Tailwind 的 CSS-var token 配置 + Radix headless 组件（推荐 shadcn/ui starter）+ Lucide 图标。R8 第一个 task 必须把这些底座搭好——见 §11.4。
 3. **Judge / researcher LLM provider integration concrete details** — which SDK calls, which retry semantics, which timeout — handled inside R5 / R6 plans.
 4. **PDF rendering library** — react-pdf in doc-intel-legacy works fine; carry forward unless plan reveals reason to change.
 5. **Concurrency model for batch extraction** — task queue (Celery? Arq? in-process asyncio.gather?) decided in R3 plan based on expected batch sizes.
@@ -679,7 +744,7 @@ These are intentionally not pinned in this design. They will surface naturally d
 
 ---
 
-## 13. Naming and identity
+## 14. Naming and identity
 
 - **Project name**: `emerge`
 - **Slogan**: Documents in. APIs emerge. They get better as you correct them.
