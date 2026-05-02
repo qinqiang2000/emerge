@@ -1,10 +1,12 @@
 # emerge — Software 3.0 Document Extraction Platform · Overall Design
 
-> **Date**: 2026-05-02
+> **Date**: 2026-05-02 (rev 2026-05-03 — drop few-shot from runtime prompt entirely)
 > **Status**: Draft v1, pending user review
 > **Slogan**: Documents in. APIs emerge. They get better as you correct them.
-> **Source**: Brainstorming session 2026-05-01 / 02 (full Q&A trail in conversation)
+> **Source**: Brainstorming session 2026-05-01 / 02 / 03 (full Q&A trail in conversation)
 > **Predecessor relationship**: doc-intel becomes legacy. emerge is a clean-slate project — no data migration, no schema reuse, no enforced compatibility.
+
+> **重大设计决策（2026-05-03）**：runtime prompt **不带 few-shot 示例**。所有"教模型"的知识都进入 schema 的字段 `description` / `examples` / `enum` 文本，以及 `global_notes`。理由：(a) 现代多模态 LLM 跟随结构化文字指引的能力远胜两年前；(b) image-based few-shot 带来 5-10s 额外延迟、2-5x token 成本、image-count 软上限风险；(c) 文字描述完全可读、可审计、可作为 Template 资产无损迁移——是真正的 software 3.0 形态：用自然语言写代码。Counterexamples 仍然保留，但**仅作为 AutoResearch 的回归测试集**，永远不进 prompt。
 
 ---
 
@@ -16,38 +18,41 @@ emerge restarts the design from a Karpathy software-3.0 lens:
 
 > **The API is not configured. It emerges from the user's first few corrections, and gets better with every subsequent one.**
 
-The user's labour is concentrated where it cannot be eliminated — judging correctness on a small sampled subset — and is fed back as evidence that the platform uses to evolve schema, prompt, and few-shot autonomously.
+The user's labour is concentrated where it cannot be eliminated — judging correctness on a small sampled subset, and writing/refining each field's natural-language description — and is fed back as evidence that the platform uses to evolve schema descriptions and global notes autonomously.
 
 ---
 
 ## 1. Conceptual model
 
-A `Project` in emerge owns four artefacts plus a model configuration:
+一个 `Project` 拥有四类产物 + 模型配置：
 
 | Artefact | Content | Mutated by |
 |---|---|---|
-| **Schema** | Structured field bundle: `[{ name, type, required, description (NL), examples?, enum? }, …]`. `description` carries domain knowledge ("ISO 4217 code…", "look for 'Bill To' / 'Purchaser'…"). Supports nested `array<object>`. | User (schema editor) + AutoResearch |
-| **Evidence Pool** | Three role-tagged views over `Annotation` rows: Anchors (≤5), Growth (≤5), Counterexamples (unbounded, never injected into prompt) | User corrections (manual) + feedback API (auto) |
+| **Schema** | 结构化字段定义：`[{ name, type, required, description (NL), examples?, enum? }, …]`。`description` 承载领域知识（"以 ISO 4217 货币代码输出"、"查找 'Bill To' / 'Purchaser' 标识"）。支持嵌套 `array<object>`。**这是 emerge 唯一向模型传递知识的地方**——没有 image few-shot。 | User (schema editor) + AutoResearch |
+| **Counterexample Pool** | 用户事后报错的 (doc, wrong_output, correct_output) 三元组。**仅作为 AutoResearch 的回归测试集**，永远不进 runtime prompt。无上限。 | User corrections (manual) + feedback API (auto) |
 | **Prompt elements** | `system_frame` (fixed), `global_notes` (free-text, cross-field) | User + AutoResearch |
 | **Model config** | `model_id` + inference params (temperature, etc.) | User / Workspace admin |
 
-The **runtime prompt is composed**, never hand-written:
+**Runtime prompt 是动态拼出来的**，永远不手写：
 
 ```
 [ system_frame ]
-[ per-field instructions: schema.fields[].description joined as a numbered list ]
+[ per-field instructions: schema.fields[].description joined as a numbered list,
+                          每条若有 examples / enum 也内联进同一段 ]
 [ global_notes (if any) ]
-[ few-shot examples: anchors then growth, in pool order ]
 + responseSchema attached as API parameter (hard-constraint top-level array<object>, snake_case English keys)
++ target document (image / PDF) as the user content block
 ```
 
-`system_frame` is fixed boilerplate (~150 tokens, version-controlled in code, not user-editable). It declares the agent's role, the output contract (top-level array, snake_case English keys, no nulls, multi-entity-aware), and instructs the model to follow the per-field instructions and few-shot examples that follow.
+注意：**没有 few-shot 段落**。要让模型学会某种规则，唯一的方式是把它写进对应字段的 `description`，或写进 `global_notes`。这强制所有"教模型"的知识都是**可读的文本**——不是埋在示例里的隐式知识。
 
-The user's primary creative act is **writing each field's `description`** — not writing prompts.
+`system_frame` 是固定 boilerplate（~150 tokens，代码里版本管理，用户不可改）。它声明 agent 的角色、输出契约（顶层 array、snake_case 英文 key、不返回空字段、多实体感知），并指示模型严格遵循后面的 per-field instructions 和 global_notes。
+
+用户的核心创造性劳动是**写每个字段的 `description`**——这才是真正的"代码"。AutoResearch 的核心动作也是改这些 description。
 
 ### 1.1 Workspace-level asset: Schema Template
 
-A `Template` is a Workspace-scoped, named, versioned snapshot of `(schema, global_notes, recommended_model)`. **Excludes** anchors / growth / counterexamples / calibration data.
+A `Template` is a Workspace-scoped, named, versioned snapshot of `(schema, global_notes, recommended_model)`. **Excludes** counterexamples、calibration data、document binaries——Template 只携带**纯文本知识**（schema descriptions / examples / enum / global_notes），跨 batch、跨 Project 无损迁移。Template 在 emerge 里成为"成熟 prompt 知识"的沉淀单元。
 
 - `Template → Project`: **fork semantics** (one-time copy, no auto-sync). Used at Project creation.
 - `Project → Template`: **explicit "Save as Template"** action. Promotes the Project's current schema as a new Template (or a new version of an existing one).
@@ -64,7 +69,7 @@ A `Template` is a Workspace-scoped, named, versioned snapshot of `(schema, globa
 | Empty fields | Not returned when model is uncertain (avoids hallucinated nulls) |
 | Schema enforcement | Sent to model as `responseSchema` API parameter (hard constraint) once locked |
 
-This contract is encoded in `system_frame` and the schema enforcement layer. **No dropdown lets the user override.** Style preferences live inside anchors and `description` text, never in UI knobs.
+This contract is encoded in `system_frame` and the schema enforcement layer. **No dropdown lets the user override.** Style preferences live inside `description` text、`examples`、`enum`，never in UI knobs。
 
 ---
 
@@ -78,41 +83,61 @@ This contract is encoded in `system_frame` and the schema enforcement layer. **N
 
 ### 2.2 The main loop — batch-first progressive evolution
 
-Users upload **batches** (5–50 docs), not one at a time. The flow:
+用户**批量**上传（5–50 份），不是一份一份滴进。流程：
 
 ```
-1. User drags 20 PDFs → 20 Document rows, status=uploaded
-2. System runs zero-shot extraction on all 20 (open-ended prompt + array responseSchema)
-   → Each Document gets a Prediction with draft JSON
-   → Document list shows status badges per row
-3. User opens doc#1 → workspace correction view
-   → Saves corrected JSON as Annotation, role=anchor[0]
-   → System derives schema candidate v0 from anchor[0] (auto-extracts field names + types from JSON)
-4. User opens doc#2
-   → Backend has already re-run prediction using anchor[0] as few-shot
-   → User corrects → anchor[1] → schema candidate v1
-5. User opens doc#3
-   → schema field-set has stabilised → system prompts: "Lock schema?"
-   → User confirms → from now on, all predictions use locked schema as responseSchema constraint
-6. User clicks "Re-extract remaining" → batch job reruns the other 17 docs with locked schema + anchors
-7. Document list now ranks docs by `confidence`; flagged docs are highlighted "needs review"
-8. User samples 👎/uncertain items + spot-checks 👍 items → marks as growth (or fixes)
-9. Confidence Loop math runs continuously in background → score visible at top of project page
-10. Score crosses threshold → "Publish API" button unlocks
+1. 用户拖 20 份 PDF → 20 个 Document 行, status=uploaded
+2. 系统对全部 20 份跑 zero-shot extraction
+   (开放式 prompt + array responseSchema, 不带任何示例)
+   → 每份 Document 产出 1 条 Prediction，含草稿 JSON
+   → Document 列表呈现，状态徽章逐行显示
+3. 用户开 doc#1 → workspace 矫正界面
+   → 编辑 JSON、改字段名、删多余项 → 保存
+   → 产生 Annotation, role=none（仅作历史记录，不进 prompt）
+   → 系统从这条 Annotation 自动派生 schema 候选 v0：
+       - 字段名 / 类型来自 JSON 形状
+       - description 字段先填占位文本（如"value derived from receipt; refine description as needed"）
+4. 用户在 Schema editor 里把 description 写好
+   （这是核心创造劳动——把领域知识写成自然语言）
+   → schema 候选 v1
+5. 用户开 doc#2 → 系统已经用 schema v1 重跑过它的 Prediction
+   → 用户改 → 进一步触发 schema description 的微调
+   → 再开 doc#3...
+6. 当 schema 字段集稳定（≥ 2 份矫正，字段集 ≤ 1 字段差异，类型匹配）
+   → 系统弹"Lock schema?"
+   → 用户确认 → 后续 predict 都带 responseSchema 硬约束
+7. 用户点 "Re-extract remaining" → 后台重跑其余 17 份
+   → Document 列表按 confidence 排序，flagged docs 高亮"需复核"
+8. 用户审 flagged items：
+   - 👎 字段 → 修正 → 触发 description 改进建议
+   - 👍 抽检 → 确认或更正
+   - 修正本身只更新 Annotation；description 是否更新由用户决定 / 由 AutoResearch 自动建议
+9. Confidence Loop 后台持续算分 → 项目级分数显示在页头
+10. 分数过阈值 → "Publish API" 按钮解锁
 ```
 
-The Project page is shaped like label-studio's Data Manager: a filterable, sortable Document list with batch actions. Per-doc workspace is one click away.
+Project page 的形态对标 label-studio Data Manager：可筛选、可排序、可批量操作的 Document 列表。点行进 workspace 矫正。
 
-**Named saved views** are out of scope for v1. Filtering is ephemeral.
+**Named saved views** 不在 v1 范围内。筛选是临时的。
 
 ### 2.3 Schema lock prompt heuristic
 
-System prompts the user to lock schema when:
-- ≥ 2 anchors exist, AND
-- Their key sets differ by ≤ 1 field (90%+ agreement), AND
-- All field types match across the anchors
+系统在以下条件全部满足时弹出 lock 提示：
+- 该 Project 至少有 2 条 `role=none` 的 saved Annotation（即用户矫正过 ≥ 2 份），AND
+- 这些 Annotation 的 key 集合差异 ≤ 1 个字段（agreement 90%+），AND
+- 所有共有字段的推断类型一致
 
-Locking is reversible from the schema editor — but discouraged after API has been published from this Project.
+锁定可从 Schema editor 取消——但 API 已发布时取消会有警告。
+
+### 2.4 Description 进化机制
+
+用户矫正 doc 时产生的"修正信号"如何流入 description？
+
+- **手动**：用户直接在 Schema editor 改 description 文字（最直接）
+- **AutoResearch 自动建议**：用户点"Improve descriptions" → researcher 看 counterexamples 和 judge 反馈，提议 description 修改 → 用户审阅是否接受
+- **绝不**：从矫正后的 JSON 自动反推 description（容易错，违反"description 是显式知识"原则）
+
+这种设计强制 description 始终是**人或 AutoResearch 显式书写**的——保证可读、可审计、可作为 Template 资产复用。
 
 ---
 
@@ -145,17 +170,16 @@ Project
   api_code               # nullable until published; uniqueness scoped per workspace
   api_published_at
 
-ProjectVersion                          # snapshot of (schema + prompt elements + evidence pool ids + model)
+ProjectVersion                          # snapshot of (schema + prompt elements + counterexample test set + model)
   id, project_id, parent_version_id, version_number
-  schema_snapshot   (JSON: full SchemaField list at this version)
+  schema_snapshot           (JSON: full SchemaField list at this version)
   global_notes_snapshot
   model_id_snapshot
-  evidence_pool_snapshot  (JSON: { anchor_ids: [...], growth_ids: [...], counterexample_ids: [...] })
-                          # references by Annotation id; not deep-copies. v1 does not replay old versions for prediction;
-                          # snapshot is informational (timeline, audit). Annotation deletion is soft only (status=cancelled), so
-                          # references remain resolvable for reading.
-  source: user_edit | auto_research | initial
-  source_metadata    (JSON: e.g., AutoResearchRun id, action toolkit invocation log)
+  counterexample_ids        (JSON array of Annotation.id)
+                            # references by Annotation id; not deep-copies. Used by AutoResearch as regression test set.
+                            # Annotation deletion is soft only (status=cancelled), so references remain resolvable.
+  source                    user_edit | auto_research | initial
+  source_metadata           (JSON: e.g., AutoResearchRun id, action toolkit invocation log)
   created_at, created_by
 
 # Schema lives inside ProjectVersion.schema_snapshot (denormalised JSON).
@@ -179,16 +203,15 @@ Prediction
 Annotation
   id, document_id, parent_prediction_id  (which Prediction the user edited from)
   output                  (JSONB: corrected array<object>)
-  role                    (anchor | growth | counterexample | none) — enforced via DB CHECK constraint
-  pinned                  (bool, anchor-only — exempt from FIFO eviction; ignored when role != 'anchor')
-  status                  (draft | saved | cancelled) — soft-delete via status='cancelled' instead of row removal
+  role                    (counterexample | none) — enforced via DB CHECK constraint
+                          # 'none'           = 用户矫正的标准记录，进入 schema 派生 + description 进化的输入信号
+                          # 'counterexample' = 生产 API 调用方报错的样本，仅作 AutoResearch 回归测试集，永不进 prompt
+  status                  (draft | saved | cancelled) — soft-delete via status='cancelled'
   notes                   (text, optional user comment)
   created_by, created_at, last_modified_by, last_modified_at
 
-# Evidence Pool is a query view, not a separate table:
-#   anchors   = Annotation WHERE project_id=X AND role='anchor'  ORDER BY created_at  LIMIT 5 (pinned excluded from cap)
-#   growth    = Annotation WHERE project_id=X AND role='growth'  ORDER BY created_at DESC  LIMIT 5
-#   counter   = Annotation WHERE project_id=X AND role='counterexample'
+# Counterexample 池是一个查询视图，不是独立表：
+#   counterexamples = Annotation WHERE project_id=X AND role='counterexample' AND status='saved'
 
 JudgeCalibration
   id, project_id, judge_model_version            # UNIQUE(project_id, judge_model_version)
@@ -213,8 +236,8 @@ ApiKey
 
 - A Project always has at least one ProjectVersion (initial empty version on creation).
 - `Project.active_version_id` always points to an existing ProjectVersion of the same Project. ProjectVersion is append-only — there is no archive / delete state in v1.
-- `Annotation.role = 'anchor'` count ≤ 5 + pinned count per Project. Insert beyond cap evicts oldest unpinned.
-- `Counterexample` Annotations never appear in `evidence_pool_snapshot.anchor_ids` or `growth_ids`.
+- `Annotation` 没有数量上限——counterexamples 全留作回归集，矫正记录全留作历史。
+- `Annotation.role` 仅允许 `counterexample` 或 `none`。anchor / growth 等旧概念已废除，DB CHECK 约束反映这一点。
 - `Template.schema_json` is immutable once a Template version is created. Editing creates a new Template version.
 
 ### 3.3 What we deliberately don't store (v1)
@@ -222,6 +245,7 @@ ApiKey
 - **bbox coordinates** (model-returned or user-drawn) — completely deferred to v2
 - **Field-level snippet library** — never within v1's design horizon
 - **Annotation parent chain** beyond `parent_prediction_id` — no full git-style history graph
+- **Anchor / growth / few-shot pool** — 已经从设计中彻底移除（见 §1）。所有"教模型"知识都流入字段 description / examples / enum 文本。
 
 ---
 
@@ -231,13 +255,15 @@ ApiKey
 
 | Signal | Computation | Measures |
 |---|---|---|
-| **LLM-as-judge** | A judge model (Workspace-configurable, default Opus) inspects (document image, predicted JSON). Returns per-entity per-field verdict ∈ {👍, 👎, uncertain} plus a free-text reason for non-👍 cases. | Value correctness |
-| **Few-shot LOO fit** | Leave-one-out: pick anchor `i`, predict its document using anchors `{0..N}\{i}` as few-shot, compare structurally to the user's saved JSON. Mismatch ratio per field. | Internal coherence of anchors |
+| **LLM-as-judge** | A judge model (Workspace-configurable, default Opus) inspects (document image, predicted JSON). Returns per-entity per-field verdict ∈ {👍, 👎, uncertain} plus a free-text reason for non-👍 cases. | 当前 prompt + schema 在 vibe-check 文档上的字段正确率 |
+| **Counterexample Regression** | 对 Counterexample Pool 里的每条 (doc, correct_output)，用当前 schema 重跑 prediction，与 correct_output 做结构化字段比对。命中率 = 通过的 counterexample 数 / 总数。 | "我之前标错的 case，现在还错不错"——直接的回归健康度 |
 
-**Composite score** (range `[0.0, 1.0]`, where 1.0 = all fields verified or human-confirmed correct):
+**Composite score** (range `[0.0, 1.0]`, 1.0 = 全部字段被人审或 judge 校验过都通过、且全部 counterexample 已修复):
 
 ```
-score = 0.8 * judge_component + 0.2 * loo_component        # default weights, configurable per project
+score = 0.7 * judge_component + 0.3 * counterexample_regression_score
+        # 默认权重，per project 可配
+        # 当 counterexample 池为空时，counterexample_regression_score 视为 1.0
 
 judge_component = (Σ verdict_weight) / total_fields
   where verdict_weight per (judge_verdict, human_verdict) pair:
@@ -248,7 +274,19 @@ judge_component = (Σ verdict_weight) / total_fields
     judge 👎/uncertain, human skipped → 0.0
     judge 👎/uncertain, human 👎      → 0.0  (calibration: tn += 1)
 
-loo_component = 1 - mismatch_ratio_across_anchors
+counterexample_regression_score:
+  let CE = { all Annotation rows with role='counterexample' AND status='saved' }
+  if |CE| == 0:
+    return 1.0
+  hits = 0
+  for ce in CE:
+    pred = run_prediction(ce.document_id, current_schema, current_global_notes)
+    if structurally_matches(pred.output, ce.output):
+      hits += 1
+  return hits / |CE|
+
+# structurally_matches: array length 一致；每对 entity 的字段集一致；每个 field 值
+# 走对应类型的等价比较（数字±0.01、字符串 normalize、enum 严格相等、嵌套 array 递归）
 ```
 
 Score is computed at two granularities:
@@ -272,7 +310,7 @@ The UI surfaces three groups for human review on the Document list page:
 - **Spot-check**: 2 randomly sampled Documents from the 👍-only set, asking "judge says these are fine, do you agree?"
 - **Optional full review**: a toggle "show all"
 
-User actions per item: thumbs-up confirm / thumbs-down + correct / skip. Corrections become Annotations with `role=growth`. Confirmations update calibration counts.
+User actions per item: thumbs-up confirm / thumbs-down + correct / skip。修正动作产生 Annotation `role=none`（普通历史记录，不进 prompt，但参与 schema 派生 + description 改进信号）。Confirmations 更新 calibration 计数。
 
 ### 4.3 Bayesian calibration of judge precision
 
@@ -336,20 +374,19 @@ The output is always a new `ProjectVersion` candidate. Never auto-promoted to `a
 
 ### 5.2 Action toolkit (whitelist)
 
-Researcher cannot write arbitrary code or call external tools. It picks from:
+Researcher 不能写任意代码或调外部工具。所有 action 都是改 schema 或 global_notes 文本。从下面挑选：
 
-- `edit_field_description(field_name, new_text)` — refine one field's NL description
-- `add_field_examples(field_name, examples[])` — add positive examples to a field
-- `add_field(name, type, description, required)` — extend schema
-- `remove_field(name)` — narrow schema
-- `make_optional(name)` — relax constraint
-- `make_required(name)` — tighten constraint
-- `edit_global_notes(text)` — global instruction edit
-- `reorder_few_shot(criterion: 'similarity'|'recency'|'diversity')` — reorder anchor pool
-- `swap_anchor(old_annotation_id, new_annotation_id)` — replace one anchor with another from the project's annotation history (researcher selects by id, not by FIFO slot)
-- `add_field_enum(name, values[])` — add `enum` constraint to a field
+- `edit_field_description(field_name, new_text)` — **主战场**：精炼某个字段的 NL description。绝大多数 turn 的核心动作。
+- `add_field_examples(field_name, examples[])` — 给某字段加正例（文本，进 description 段）
+- `add_field(name, type, description, required)` — 扩展 schema
+- `remove_field(name)` — 收缩 schema
+- `make_optional(name)` / `make_required(name)` — 调整约束
+- `edit_global_notes(text)` — 改全局 notes
+- `add_field_enum(name, values[])` — 给字段加 `enum` 约束（注入 responseSchema）
 
-Each action is a structured function call (not free text). The researcher LLM emits these via JSON tool-use API. New actions can be added to the whitelist over time without architectural change.
+注意：toolkit 中**没有任何与 anchor / few-shot pool 相关的 action**。researcher 唯一能动的就是文字。这让每一次动作都可读、可复盘、可作为 Template 资产沉淀。
+
+每个 action 是结构化函数调用（不是自由文本），researcher LLM 通过 JSON tool-use API 发出。新 action 可后续向白名单加，不破坏架构。
 
 ### 5.3 Triggers
 
@@ -483,11 +520,11 @@ Columns (default visible):
 - Status (uploaded / extracting / extracted / errored)
 - Entity count (length of latest Prediction's array output)
 - Confidence (latest, per-doc score from the Confidence Loop)
-- Role tags (anchor / growth / counterexample / none)
+- Annotation 状态 (none / counterexample) + 矫正过的标记
 - Last modified
 
 Filters (ephemeral, not saved as named views in v1):
-- Status, role, confidence range, entity-count range
+- Status、是否已矫正、是否 counterexample、confidence range、entity-count range
 
 Top toolbar:
 - "Upload" (drag-and-drop multi-file)
@@ -519,7 +556,7 @@ Click a row → enters the Workspace correction view for that Document.
 |                                      +----------------------+
 |                                      | [📋 Schema editor]  |
 |                                      | [💬 Ask researcher] |
-|                                      | [Save as Anchor]    |
+|                                      | [💾 Save correction]|
 +--------------------------------------+----------------------+
 ```
 
@@ -531,9 +568,9 @@ Right: entity-grouped field list. Each entity is a card; expandable / collapsibl
 - per-field "report wrong" (sets a flag on the field that informs Confidence weighting)
 
 Bottom buttons:
-- **Schema editor** — slides out a panel. Each field has an editable description (multi-line text), type dropdown, required toggle, optional examples and enum. Schema lock state visible. "Lock / Unlock" button.
-- **Ask researcher** — chat input. Free-text "this batch is missing tax field", "currency should always be ISO code". Submitting triggers an AutoResearch run with the user's text injected into the diagnosis prompt.
-- **Save as anchor** — persists current Annotation with role=anchor, decrementing the FIFO slot.
+- **Schema editor** — slides out a panel. Each field has an editable description (multi-line text)、type dropdown、required toggle、optional examples and enum。Schema lock state visible。"Lock / Unlock" button。**这是 emerge 的核心编辑面**——所有"教模型"的工作发生在这里。
+- **Ask researcher** — chat input. 自由文字 "this batch is missing tax field"、"currency should always be ISO code"。提交触发 AutoResearch run，把用户的文字注入 diagnosis prompt。
+- **Save correction** — 持久化当前 Annotation, role=none。这是普通保存，所有矫正都进历史。
 
 ### 8.3 What's intentionally absent in the workspace view
 
@@ -541,6 +578,7 @@ Bottom buttons:
 - No bbox overlay (multimodal LLMs are unreliable for this; deferred to v2)
 - No three-column "annotate fields" layout (replaced by entity-grouped cards)
 - No "next undone document" task queue (Document list filters cover this)
+- **No "anchor management" / "few-shot pool" widget**—few-shot 概念已不存在（见 §1）
 
 ---
 
@@ -551,11 +589,11 @@ Bottom buttons:
 - Workspace + multi-tenant isolation (mirroring label-studio / doc-intel-legacy patterns)
 - Project + Schema Template + 5 builtin Templates
 - Document upload (multi-file batch)
-- Zero-shot extraction with array `responseSchema`
-- Schema auto-derivation from anchors + lock workflow
+- Zero-shot extraction with array `responseSchema` — **prompt 不带任何 image few-shot**
+- Schema auto-derivation from user corrections + lock workflow
 - Schema editor with per-field NL descriptions, types, examples, enums
-- Evidence Pool (anchor / growth / counterexample as Annotation roles)
-- Confidence Loop (judge + LOO + human review + Bayesian calibration)
+- Counterexample Pool (Annotation `role=counterexample`，仅作 AutoResearch 回归测试)
+- Confidence Loop (judge + counterexample regression + human review + Bayesian calibration)
 - AutoResearch (single Reflexion loop + action toolkit, manual + optional semi-automatic trigger)
 - ProjectVersion timeline, manual setting of active_version
 - API publish bound to Project's active version
@@ -565,10 +603,12 @@ Bottom buttons:
 
 ### Out of scope (v1)
 
+- **Image few-shot of any kind** (anchor / growth / reference)——决定永久不做（见 §0 重大决策）
 - Lab / Prod artefact split (deferred to v2 — but `ProjectVersion` already gives the foundation)
 - Manual `Promote to Prod` action (v2)
 - Bbox of any kind: model-returned, user-drawn, hover-highlight (v2+)
-- Self-consistency confidence signal (judge + LOO is sufficient for v1)
+- Self-consistency confidence signal (judge + counterexample regression 已经足够 v1)
+- LOO (leave-one-out) confidence signal — 不再需要（没有 anchor pool 可 LOO）
 - Counterexamples injected into prompt (decided permanent: never)
 - Field-level snippet library across schemas (never planned in this design)
 - Saved named views on the Document list (filtering is ephemeral; v2 if demanded)
@@ -586,7 +626,8 @@ Bottom buttons:
 | Risk | Mitigation |
 |---|---|
 | Multimodal LLM cannot reliably detect multiple entities in one document | Judge prompt explicitly asks "how many entities?"; UI supports manual "add entity" + "delete entity"; counterexamples on entity-count errors fed to AutoResearch |
-| Zero-shot draft is so wrong it kills onboarding | Strong default `system_frame` for open-ended extraction; Template entry path provides high-quality starting schema; anchor[0] correction is the worst case but bounded |
+| Zero-shot draft 太差导致 onboarding 崩溃（无 few-shot 兜底） | Strong default `system_frame` for open-ended extraction；Template 入口提供高质量起点；用户矫正第一份后 schema descriptions 立刻被填上 → 第二份起就是有 description 加持的 zero-shot；AutoResearch 在用户矫正信号到位后立刻可触发优化 description |
+| 某种文档真的需要 image few-shot 才能搞定（无逃生口） | v1 接受这个限制：Template 沉淀的高质量 description + AutoResearch 优化能覆盖 95%+ 实用场景；剩余 5% 是已知 trade-off。如果生产真撞上，v2 可以加 few-shot back（架构上是增量，不是破坏性） |
 | Schema lock is regretted later | Always reversible from Schema editor; lock change creates a new ProjectVersion; user warned if unlock occurs after API publish |
 | AutoResearch goes rogue | Action toolkit is a whitelist; turn history transparent and human-readable; output is a candidate ProjectVersion never auto-promoted; max_turn + 3-turn no-improvement early stop |
 | Judge calibration cold-start | Beta(8,2) prior gives a sane 80% starting point; UI displays `± CI` so users see the uncertainty; spot-check sampling forces calibration data accumulation |
@@ -605,20 +646,20 @@ This document is intentionally a **single overall design** rather than feature-c
 |---|---|---|
 | **R1 — Foundation** | User / Workspace / Auth / DB scaffolding (FastAPI + async SQLAlchemy + alembic init) | — |
 | **R2 — Project & Document model** | Project, Document, Prediction, Annotation tables; multi-file upload; basic list endpoints | R1 |
-| **R3 — Schema & extraction core** | ProjectVersion + schema_snapshot; zero-shot prompt composition; responseSchema integration with Gemini + OpenAI; schema auto-derivation from anchors; lock workflow | R2 |
-| **R4 — Evidence Pool & corrections** | Annotation roles + FIFO logic; feedback API; counterexample handling | R3 |
-| **R5 — Confidence Loop & Calibration** | Judge integration; LOO computation; JudgeCalibration table + Beta updates; UI surfacing of human review queue | R4 |
-| **R6 — AutoResearch** | AutoResearchRun table; Reflexion loop; action toolkit dispatch; turn history rendering; manual + semi-automatic triggers | R5 |
-| **R7 — Templates & API publish** | Template table + builtin seeders; Save-as-Template; API publish + key + feedback routing; rate limiting | R3 (parallel to R4) |
-| **R8 — UI** | Document list page; Workspace correction view (2-column); Schema editor panel; AutoResearch run viewer; Project page header / publish flow | R2 onwards, in parallel with backend slices |
+| **R3 — Schema & extraction core** | ProjectVersion + schema_snapshot; zero-shot prompt composition (NO few-shot); responseSchema integration with Gemini + OpenAI; schema auto-derivation from corrected Annotations; lock workflow | R2 |
+| **R4 — Corrections & Counterexamples** | Annotation `role` (none / counterexample); 矫正保存路径；feedback API（生成 counterexample）；counterexample 列表 API | R3 |
+| **R5 — Confidence Loop & Calibration** | Judge integration; counterexample regression computation; JudgeCalibration table + Beta updates; UI surfacing of human review queue | R4 |
+| **R6 — AutoResearch** | AutoResearchRun table; Reflexion loop; action toolkit dispatch（仅文本类 action）；turn history rendering; manual + semi-automatic triggers | R5 |
+| **R7 — Templates & API publish** | Template table + 5 builtin seeders（仅 schema descriptions）; Save-as-Template; API publish + key + feedback routing; rate limiting | R3 (parallel to R4) |
+| **R8 — UI** | Document list page; Workspace correction view (2-column); Schema editor panel（核心面）; AutoResearch run viewer; Project page header / publish flow | R2 onwards, in parallel with backend slices |
 
-R1, R2, R3 are sequential foundations. R4–R7 can be parallelised across two engineers. R8 lands per backend slice as it stabilises.
+R1, R2, R3 是串行 foundation。R4–R7 可以双人并行。R8 跟随每个后端 slice 落地。
 
-A reasonable v1 milestone structure for writing-plans to consider:
-- **M1 Walking skeleton** — R1 + R2 + R3 minimal: user can upload, extract zero-shot, edit JSON in workspace, save anchor. No judge, no AutoResearch, no Templates yet.
-- **M2 Confidence** — R4 + R5: pool roles, judge, LOO, calibration, human review queue. Project-level confidence score visible.
-- **M3 Evolution** — R6: AutoResearch run loop, action toolkit, turn history.
-- **M4 Reuse + ship** — R7 + R8 polish: Templates, API publish, public extraction endpoint, feedback loop end-to-end.
+writing-plans 可参考的 v1 milestone 结构：
+- **M1 Walking skeleton** — R1 + R2 + R3 最小：用户能上传、zero-shot 提取、在 workspace 编辑 JSON、保存矫正。无 judge、无 AutoResearch、无 Templates。
+- **M2 Confidence** — R4 + R5：counterexample 路径、judge、calibration、人审队列。项目级 confidence score 可见。
+- **M3 Evolution** — R6：AutoResearch run loop、action toolkit（纯文本动作）、turn history。
+- **M4 Reuse + ship** — R7 + R8 polish：Templates、API publish、公开 extract 端点、反馈回路端到端跑通。
 
 writing-plans is the proper next phase to translate this into per-slice plans with task lists and TDD ordering.
 
