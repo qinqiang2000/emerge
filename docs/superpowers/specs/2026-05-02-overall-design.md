@@ -1,16 +1,10 @@
 # emerge — Software 3.0 Document Extraction Platform · Overall Design
 
-> **Date**: 2026-05-02 (rev 2026-05-03 — drop few-shot from runtime prompt entirely)
-> **Status**: Draft v1, pending user review
 > **Slogan**: Documents in. APIs emerge. They get better as you correct them.
-> **Source**: Brainstorming session 2026-05-01 / 02 / 03 (full Q&A trail in conversation)
-> **Predecessor relationship**: doc-intel becomes legacy. emerge is a clean-slate project — no data migration, no schema reuse, no enforced compatibility.
+> **Status**: v1 design
+> emerge is a clean-slate project; no data migration from any predecessor.
 
-> **重大设计决策（2026-05-03）**：runtime prompt **不带 few-shot 示例**。所有"教模型"的知识都进入 schema 的字段 `description` / `examples` / `enum` 文本，以及 `global_notes`。理由：(a) 现代多模态 LLM 跟随结构化文字指引的能力远胜两年前；(b) image-based few-shot 带来 5-10s 额外延迟、2-5x token 成本、image-count 软上限风险；(c) 文字描述完全可读、可审计、可作为 Template 资产无损迁移——是真正的 software 3.0 形态：用自然语言写代码。Counterexamples 仍然保留，但**仅作为 AutoResearch 的回归测试集**，永远不进 prompt。
-
-## 术语对照（Glossary）
-
-通读 spec 前先对齐这些关键词。为避免歧义，每一项都明确边界：
+## Glossary
 
 | 词 | 含义 | 不是什么 |
 |---|---|---|
@@ -19,12 +13,10 @@
 | **Project** | 一个文档类型 + schema + API 的工作单元。属于某 Workspace。 | 不是 doc 集合（doc 是其子资源） |
 | **Document** | 一份上传的文件（PDF / 图片）。一个 doc 一行 DB 记录。 | 不是 JSON 输出 |
 | **Prediction** | 模型对某 Document 的输出。自动生成。 | 不是人审过的版本 |
-| **Annotation** (DB 表名) | **emerge 里 = 用户矫正后的完整 JSON**。**不**包含 bbox / span 等位置信息——和 label-studio 的"annotation = bbox 标注"完全是两回事，只是借了 LS 的表名。 | 不是 bbox / 区域标注 |
+| **Annotation** (DB 表名) | 用户矫正后的完整 JSON。**不**包含 bbox / span 等位置信息（仅借了 label-studio 的表名）。 | 不是 bbox / 区域标注 |
 | **entity** (小写) | JSON 输出 array 里的一个元素（如一张 receipt）。"multi-entity" = 一份 doc 可能含多张。 | 不是 DB 表 |
 | **Counterexample** | role=counterexample 的 Annotation：API 调用方事后报错的样本。仅作 AutoResearch 回归测试集。 | 不进 runtime prompt |
 | **vibe-check 集合** | Project 内"等待人审"的 Document 子集——见 §4.1 精确定义。 | 不是用户主动维护的列表 |
-| **few-shot** (history term) | 旧概念：把例图注入 prompt。**emerge 不做**（§0 决策）。 | 不存在于 emerge runtime |
-| **anchor / growth** (history term) | 旧概念：示例池。**emerge 不存在**。涉及只为说明"已废除"。 | 不存在于 emerge runtime |
 
 ---
 
@@ -93,11 +85,36 @@ This contract is encoded in `system_frame` and the schema enforcement layer. **N
 
 ## 2. User workflow
 
-### 2.1 Project creation — three entry points
+### 2.1 Project creation — NL-first (software 3.0 默认入口)
 
-1. **From scratch** → zero schema, full O3 progressive evolution
-2. **From Template** → schema copied; jump straight to upload
-3. **From NL description** → user types `"I want: shop name, total amount, date, line items (name + qty + price)"` → system parses to schema + `description` placeholders → jump to upload
+进入"新建 Project"页面，用户看到的是**一个对话框**（不是表单）：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  What kind of document do you want to extract?              │
+│                                                             │
+│  Examples:                                                  │
+│    • "Japanese receipts. I need shop name, total, date,     │
+│       and each line item (name, qty, unit price)"           │
+│    • "German invoices — vendor info, line items with VAT"   │
+│    • "Just describe it in your own words..."                │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ [textarea]                                          │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  Or skip this and start from:                               │
+│    [ Browse 5 builtin Templates ]    [ Empty Project ]     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+用户输入一段 NL 描述 → 后端调用 LLM 把它解析为 (schema fields with descriptions, global_notes 草稿) → 渲染成可编辑预览给用户确认 → 用户接受 → Project 创建完成 → 直接进入"上传 doc"。
+
+底部两个 escape hatch：
+- **Browse 5 builtin Templates** — 资深用户走捷径（已有现成 schema，跳过 NL 步骤）
+- **Empty Project** — 完全留白，用户自己拖 doc 后从 zero-shot 起步
+
+这个布局让 software 3.0 形态在产品的**第一印象**就建立——用户用自然语言描述需求，不是填表单。
 
 ### 2.2 The main loop — batch-first progressive evolution
 
@@ -257,15 +274,9 @@ ApiKey
 - A Project always has at least one ProjectVersion (initial empty version on creation).
 - `Project.active_version_id` always points to an existing ProjectVersion of the same Project. ProjectVersion is append-only — there is no archive / delete state in v1.
 - `Annotation` 没有数量上限——counterexamples 全留作回归集，矫正记录全留作历史。
-- `Annotation.role` 仅允许 `counterexample` 或 `none`。anchor / growth 等旧概念已废除，DB CHECK 约束反映这一点。
+- `Annotation.role` 仅允许 `counterexample` 或 `none`，DB CHECK 约束。
 - `Template.schema_json` is immutable once a Template version is created. Editing creates a new Template version.
-
-### 3.3 What we deliberately don't store (v1)
-
-- **bbox coordinates** (model-returned or user-drawn) — completely deferred to v2
-- **Field-level snippet library** — never within v1's design horizon
-- **Annotation parent chain** beyond `parent_prediction_id` — no full git-style history graph
-- **Anchor / growth / few-shot pool** — 已经从设计中彻底移除（见 §1）。所有"教模型"知识都流入字段 description / examples / enum 文本。
+- 不存储 bbox 坐标（模型返回或用户画的都不存）—— v1 设计上没有这个能力。
 
 ---
 
@@ -475,11 +486,11 @@ Confirms → creates Template / Template version. Does not modify the source Pro
 
 ---
 
-## 7. API Publish (v1 simplified)
+## 7. API Publish
 
-### 7.1 v1 scope: project-bound test API
+### 7.1 Endpoints
 
-There is **no separate Lab/Prod artefact concept** in v1. The published API is a thin façade over the Project's current `active_version_id`.
+The published API is a thin façade over `Project.active_version_id`. Each public call invokes that version's schema + prompt elements + model. No artefact pinning.
 
 ```
 POST /api/v1/projects/{pid}/publish
@@ -513,25 +524,15 @@ POST /extract/{api_code}/feedback                           (public, called by i
 # bcrypt-compares the secret half against key_hash. Constant-time comparison.
 ```
 
-### 7.2 What changing the Project does to a published API
+### 7.2 Live-version semantics
 
-Because there is no artefact pinning:
-- User edits schema → API now uses new schema **immediately** on next call
-- AutoResearch produces v_new, user marks it active → API uses v_new immediately
-- User unpublishes → all calls now return 403
+The published API reads `Project.active_version_id` on every incoming call:
 
-This is intentional for v1: it makes the platform single-loop, easy to reason about, and matches how doc-intel currently works for users who are evaluating and publishing in the same project.
+- 用户改 schema → 下一次 API 调用立即用新 schema
+- AutoResearch 产出新 ProjectVersion，用户在 timeline 上设为 active → 下一次调用立即生效
+- 用户 unpublish → API 返回 403
 
-### 7.3 v2 extension point (not in scope here, listed for orientation)
-
-v2 will add:
-- `ProductionDeployment` table with immutable artefact bundles
-- "Promote vN to deployment X" explicit user action
-- Multiple deployments per Project pinned to different versions
-- Blue-green / rollback semantics
-- API keys move from `Project` to `ProductionDeployment`
-
-The v1 schema (`ProjectVersion` already exists) can extend to v2 without breaking changes.
+**没有缓存、没有版本钉，单环路语义**——无需调用方做任何重新部署。
 
 ---
 
@@ -612,17 +613,76 @@ Right: entity-grouped field list. Each entity is a card; expandable / collapsibl
 - per-field "report wrong" (sets a flag on the field that informs Confidence weighting)
 
 Bottom buttons:
-- **Schema editor** — slides out a panel. Each field has an editable description (multi-line text)、type dropdown、required toggle、optional examples and enum。Schema lock state visible。"Lock / Unlock" button。**这是 emerge 的核心编辑面**——所有"教模型"的工作发生在这里。
-- **Ask researcher** — chat input. 自由文字 "this batch is missing tax field"、"currency should always be ISO code"。提交触发 AutoResearch run，把用户的文字注入 diagnosis prompt。
-- **Save correction** — 持久化当前 Annotation, role=none。这是普通保存，所有矫正都进历史。
+- **Schema editor** — 滑出一个 panel，**双模式**（见 §8.4）。这是 emerge 的核心编辑面，所有"教模型"的工作发生在这里。
+- **Ask researcher** — chat input。自由文字 "this batch is missing tax field"、"currency should always be ISO code"。提交触发 AutoResearch run，把用户的文字注入 diagnosis prompt。
+- **Save correction** — 持久化当前 Annotation, role=none。
 
-### 8.3 What's intentionally absent in Studio
+### 8.3 Schema editor — 双模式（form + chat）
+
+Schema editor 是 emerge 最 software-3.0 的产品面。提供**两个等价模式**，用户可随时切换：
+
+**Form mode**（精确编辑，默认）：
+
+```
+┌─ Schema for "Japan Receipts"  [Locked ▼]  [Switch to Chat ⇄]─┐
+│                                                              │
+│  • shop_name      string  required                           │
+│    ┌──────────────────────────────────────────────────────┐  │
+│    │ 店名（look near shop logo / 店舗 marker）         │  │
+│    └──────────────────────────────────────────────────────┘  │
+│    [+ examples]  [+ enum]                                    │
+│                                                              │
+│  • total_amount   number  required                           │
+│    ┌──────────────────────────────────────────────────────┐  │
+│    │ 合計金額（税込）                                  │  │
+│    └──────────────────────────────────────────────────────┘  │
+│  ...                                                         │
+│  [+ add field]                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Chat mode**（NL 编辑）：
+
+```
+┌─ Schema for "Japan Receipts"  [Locked ▼]  [Switch to Form ⇄]─┐
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ user: 把 currency 字段加上，要求 ISO 4217 三字母     │    │
+│  │       代码格式，比如 JPY、USD                        │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ system 提议变更：                                   │    │
+│  │   + add_field("currency", string, required,         │    │
+│  │      description="ISO 4217 three-letter code",     │    │
+│  │      enum=["JPY","USD","EUR","CNY"])                │    │
+│  │                                                     │    │
+│  │   [Diff preview ↓]                                  │    │
+│  │   [Accept] [Reject] [Edit further]                  │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ [textarea] 描述你想改什么...                         │    │
+│  └──────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Chat mode 实现：
+
+- 用户输入 NL → 后端发给 schema-editor LLM（Workspace 配，default 与 researcher 同模型）
+- LLM 必须**只能**调用与 AutoResearch 相同的 action toolkit (§5.2)——这保证了 form mode 和 chat mode 两条路径产出语义完全等价的变更
+- 系统渲染 action 列表 + diff 预览给用户审阅
+- 用户 Accept → 应用为新 ProjectVersion (source=user_edit, source_metadata 含原 NL prompt)
+- 用户 Reject → 不应用，对话继续
+
+两个模式**永远写同一个底层数据结构**——只是 UI 表层不同。任何时刻切换不丢工作。这是 software 3.0 在 schema 编辑层面的彻底落地。
+
+### 8.4 Studio 中刻意不做
 
 - No raw-JSON-tree view (the user never edits raw JSON)
 - No bbox overlay (multimodal LLMs are unreliable for this; deferred to v2)
 - No three-column "annotate fields" layout (replaced by entity-grouped cards)
 - No "next undone document" task queue (Document list filters cover this)
-- **No "anchor management" / "few-shot pool" widget**—few-shot 概念已不存在（见 §1）
 
 ---
 
@@ -647,21 +707,16 @@ Bottom buttons:
 
 ### Out of scope (v1)
 
-- **Image few-shot of any kind** (anchor / growth / reference)——决定永久不做（见 §0 重大决策）
-- Lab / Prod artefact split (deferred to v2 — but `ProjectVersion` already gives the foundation)
-- Manual `Promote to Prod` action (v2)
-- Bbox of any kind: model-returned, user-drawn, hover-highlight (v2+)
-- Self-consistency confidence signal (judge + counterexample regression 已经足够 v1)
-- LOO (leave-one-out) confidence signal — 不再需要（没有 anchor pool 可 LOO）
-- Counterexamples injected into prompt (decided permanent: never)
-- Field-level snippet library across schemas (never planned in this design)
-- Saved named views on the Document list (filtering is ephemeral; v2 if demanded)
-- Webhooks / completion notifications
+实施 LLM 警惕这些，不要意外加进来：
+
+- Bbox of any kind (model-returned / user-drawn / hover-highlight)
+- Lab / Prod artefact split — `ProjectVersion` 已是基础，但 v1 不引入独立 Promote 动作
+- Saved named views on Document list (筛选是临时的)
+- Webhooks / push notifications
 - Multi-user real-time collaboration / annotation locking
-- Comparison view (model A vs model B side-by-side)
-- Project clone (orthogonal to Template; v2 if demanded)
+- Project clone
 - Project-level statistics dashboard tab
-- Migrating any data from doc-intel-legacy
+- Comparison view (model A vs model B 并排)
 
 ---
 
@@ -669,10 +724,9 @@ Bottom buttons:
 
 | Risk | Mitigation |
 |---|---|
-| Multimodal LLM cannot reliably detect multiple entities in one document | Judge prompt explicitly asks "how many entities?"; UI supports manual "add entity" + "delete entity"; counterexamples on entity-count errors fed to AutoResearch |
-| Zero-shot draft 太差导致 onboarding 崩溃（无 few-shot 兜底） | Strong default `system_frame` for open-ended extraction；Template 入口提供高质量起点；用户矫正第一份后 schema descriptions 立刻被填上 → 第二份起就是有 description 加持的 zero-shot；AutoResearch 在用户矫正信号到位后立刻可触发优化 description |
-| 某种文档真的需要 image few-shot 才能搞定（无逃生口） | v1 接受这个限制：Template 沉淀的高质量 description + AutoResearch 优化能覆盖 95%+ 实用场景；剩余 5% 是已知 trade-off。如果生产真撞上，v2 可以加 few-shot back（架构上是增量，不是破坏性） |
-| Schema lock is regretted later | Always reversible from Schema editor; lock change creates a new ProjectVersion; user warned if unlock occurs after API publish |
+| Multimodal LLM 多实体识别不稳 | Judge prompt explicitly asks "how many entities?"; UI 支持手动 "add entity" / "delete entity"; entity-count 错误形成 counterexample 喂 AutoResearch |
+| Zero-shot draft 太差导致 onboarding 崩溃 | Strong default `system_frame` for open-ended extraction；NL-first onboarding（§2.1）让用户先描述需求，schema 一次性形成；Template 入口提供高质量起点 |
+| Schema lock 后悔 | Schema editor 可随时 unlock；unlock 创建新 ProjectVersion；如果 API 已 publish，unlock 时弹警告 |
 | AutoResearch goes rogue | Action toolkit is a whitelist; turn history transparent and human-readable; output is a candidate ProjectVersion never auto-promoted; max_turn + 3-turn no-improvement early stop |
 | Judge calibration cold-start | Beta(8,2) prior gives a sane 80% starting point; UI displays `± CI` so users see the uncertainty; spot-check sampling forces calibration data accumulation |
 | Multimodal model returns inconsistent JSON shape pre-lock | `responseSchema` enforced at API level even before user lock (uses derived candidate schema); model output is structurally constrained from call #1 |
