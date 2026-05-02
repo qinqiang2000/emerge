@@ -8,6 +8,24 @@
 
 > **重大设计决策（2026-05-03）**：runtime prompt **不带 few-shot 示例**。所有"教模型"的知识都进入 schema 的字段 `description` / `examples` / `enum` 文本，以及 `global_notes`。理由：(a) 现代多模态 LLM 跟随结构化文字指引的能力远胜两年前；(b) image-based few-shot 带来 5-10s 额外延迟、2-5x token 成本、image-count 软上限风险；(c) 文字描述完全可读、可审计、可作为 Template 资产无损迁移——是真正的 software 3.0 形态：用自然语言写代码。Counterexamples 仍然保留，但**仅作为 AutoResearch 的回归测试集**，永远不进 prompt。
 
+## 术语对照（Glossary）
+
+通读 spec 前先对齐这些关键词。为避免歧义，每一项都明确边界：
+
+| 词 | 含义 | 不是什么 |
+|---|---|---|
+| **Workspace** | 租户边界，admin 划分。普通用户基本不感知（参考 §8.0）。 | 不是单文档矫正页 |
+| **Studio** | 单文档矫正页（per-document correction view）。用户从 Document 列表点行进入。见 §8.2。 | 不是租户边界、也不是整个项目页 |
+| **Project** | 一个文档类型 + schema + API 的工作单元。属于某 Workspace。 | 不是 doc 集合（doc 是其子资源） |
+| **Document** | 一份上传的文件（PDF / 图片）。一个 doc 一行 DB 记录。 | 不是 JSON 输出 |
+| **Prediction** | 模型对某 Document 的输出。自动生成。 | 不是人审过的版本 |
+| **Annotation** (DB 表名) | **emerge 里 = 用户矫正后的完整 JSON**。**不**包含 bbox / span 等位置信息——和 label-studio 的"annotation = bbox 标注"完全是两回事，只是借了 LS 的表名。 | 不是 bbox / 区域标注 |
+| **entity** (小写) | JSON 输出 array 里的一个元素（如一张 receipt）。"multi-entity" = 一份 doc 可能含多张。 | 不是 DB 表 |
+| **Counterexample** | role=counterexample 的 Annotation：API 调用方事后报错的样本。仅作 AutoResearch 回归测试集。 | 不进 runtime prompt |
+| **vibe-check 集合** | Project 内"等待人审"的 Document 子集——见 §4.1 精确定义。 | 不是用户主动维护的列表 |
+| **few-shot** (history term) | 旧概念：把例图注入 prompt。**emerge 不做**（§0 决策）。 | 不存在于 emerge runtime |
+| **anchor / growth** (history term) | 旧概念：示例池。**emerge 不存在**。涉及只为说明"已废除"。 | 不存在于 emerge runtime |
+
 ---
 
 ## 0. Why this exists
@@ -91,7 +109,7 @@ This contract is encoded in `system_frame` and the schema enforcement layer. **N
    (开放式 prompt + array responseSchema, 不带任何示例)
    → 每份 Document 产出 1 条 Prediction，含草稿 JSON
    → Document 列表呈现，状态徽章逐行显示
-3. 用户开 doc#1 → workspace 矫正界面
+3. 用户开 doc#1 → 进 Studio（单文档矫正界面）
    → 编辑 JSON、改字段名、删多余项 → 保存
    → 产生 Annotation, role=none（仅作历史记录，不进 prompt）
    → 系统从这条 Annotation 自动派生 schema 候选 v0：
@@ -116,7 +134,7 @@ This contract is encoded in `system_frame` and the schema enforcement layer. **N
 10. 分数过阈值 → "Publish API" 按钮解锁
 ```
 
-Project page 的形态对标 label-studio Data Manager：可筛选、可排序、可批量操作的 Document 列表。点行进 workspace 矫正。
+Project page 的形态对标 label-studio Data Manager：可筛选、可排序、可批量操作的 Document 列表。点行进 Studio（单文档矫正界面）。
 
 **Named saved views** 不在 v1 范围内。筛选是临时的。
 
@@ -145,7 +163,9 @@ Project page 的形态对标 label-studio Data Manager：可筛选、可排序�
 
 emerge takes the `Document` / `Prediction` / `Annotation` separation from label-studio's task model — it is a clean conceptual fit and proven in practice.
 
-### 3.1 Entities
+> **关于 `Annotation` 表名**：emerge 借用了 label-studio 的命名传统，但**含义不同**——emerge 的 Annotation 是"用户矫正后的完整 JSON"，**不带任何 bbox / 区域 / span 信息**。可以把 Annotation 简单理解为"人审过的 Prediction"。如果 label-studio 经验让你联想到 bbox 标注，请暂时清空那部分预期。
+
+### 3.1 Database tables
 
 ```text
 User
@@ -292,7 +312,15 @@ counterexample_regression_score:
 Score is computed at two granularities:
 
 - **Per-Document score** — same formula restricted to the fields of one Document's latest Prediction. Used to rank / filter on the Document list page.
-- **Per-Project score** — average of per-Document scores across the Project's vibe-check set (unannotated docs in the batch + sampled production calls).
+- **Per-Project score** — average of per-Document scores across the Project's **vibe-check set**.
+
+**Vibe-check set 精确定义**：Project 内的 Document 中，最新一条 Prediction **未被随后的 saved Annotation (role=none) 覆盖**的那批。也就是"模型输出过、但用户还没确认或矫正"的 doc。`role=counterexample` 的 Annotation 不算"覆盖"——它是事后报错入池，不消耗 vibe-check 资格。
+
+具体来源两块：
+1. 当前 batch 中尚未被人审的 Documents
+2. 通过公开 API 进来的最近 N 次调用（按比例采样，N 可配，default 上限 50 条/Project）
+
+vibe-check 集合是**派生视图**，用户不直接管理；系统按上述定义自动维护。
 
 Recomputed eagerly on:
 - new Annotation saved
@@ -509,7 +537,21 @@ The v1 schema (`ProjectVersion` already exists) can extend to v2 without breakin
 
 ## 8. UI layout & interaction
 
-Two top-level surfaces.
+### 8.0 Workspace 对普通用户透明（来自 label-studio 实际经验）
+
+**Workspace = 租户边界，admin 划分。普通用户基本不感知。**
+
+- 普通用户登录 → 直接落到 "我所属 Workspace 的 Project 列表"，看不到 Workspace 概念
+- 用户的 mental model：**"我登进来 → 我的 Project 列表 → 进 Project → Document 列表 → 进 Studio"**
+- 仅多 Workspace 成员（少见）顶栏会有 Workspace 切换器
+- Admin 用户多一个 "Workspace 管理"页
+
+实施约束：
+- 单 Workspace 用户的 URL 不带 workspace_id（如 `/projects/<id>`），路由自动解析其唯一 Workspace
+- 多 Workspace 用户 URL 带（如 `/w/<workspace_id>/projects/<id>`），切 Workspace 切 URL
+- 后端 API 路径仍带 `workspace_id`（保持显式），前端在请求时自动注入
+
+这映射 label-studio 的真实使用模式：90%+ 用户不知道有 Workspace。
 
 ### 8.1 Project page (Document list view)
 
@@ -534,9 +576,11 @@ Top toolbar:
 - Project-level confidence score (large display)
 - "Publish API" / "Manage API Keys"
 
-Click a row → enters the Workspace correction view for that Document.
+Click a row → enters **Studio** for that Document.
 
-### 8.2 Workspace correction view (V2-pragmatic, 2-column)
+### 8.2 Studio (per-doc correction view, V2-pragmatic 2-column)
+
+> **命名注意**：emerge 里有两个"workspace"概念易混。本节的 **Studio** 是单文档矫正页（per-document editor）。**Workspace** 永远指租户边界（admin 划分，普通用户基本不感知）。整份 spec 此后凡涉及单文档矫正页一律用 Studio。
 
 ```
 +--------------------------------------+----------------------+
@@ -572,7 +616,7 @@ Bottom buttons:
 - **Ask researcher** — chat input. 自由文字 "this batch is missing tax field"、"currency should always be ISO code"。提交触发 AutoResearch run，把用户的文字注入 diagnosis prompt。
 - **Save correction** — 持久化当前 Annotation, role=none。这是普通保存，所有矫正都进历史。
 
-### 8.3 What's intentionally absent in the workspace view
+### 8.3 What's intentionally absent in Studio
 
 - No raw-JSON-tree view (the user never edits raw JSON)
 - No bbox overlay (multimodal LLMs are unreliable for this; deferred to v2)
@@ -599,7 +643,7 @@ Bottom buttons:
 - API publish bound to Project's active version
 - Feedback endpoint receiving counterexamples from API consumers
 - Document list view (Data Manager-style)
-- 2-column workspace correction view
+- 2-column Studio (per-doc correction view)
 
 ### Out of scope (v1)
 
@@ -678,8 +722,8 @@ Bottom buttons:
 | 维度 | 跟随 label-studio | 自己重做 |
 |---|---|---|
 | Data Manager 列表（筛选 / 排序 / 批量动作） | ✅ 信息架构和列模型照搬 | — |
-| 两栏 workspace 布局（doc preview + 字段编辑） | ✅ 整体 layout 照搬 | — |
-| 工作流模式（doc list → 进 workspace → 矫正 → 回 list） | ✅ 照搬 | — |
+| 两栏 Studio 布局（doc preview + 字段编辑） | ✅ 整体 layout 照搬 | — |
+| 工作流模式（doc list → 进 Studio → 矫正 → 回 list） | ✅ 照搬 | — |
 | 视觉风格（颜色 / 字体 / 留白 / 圆角） | ❌ | 现代克制：Tailwind + CSS var token system |
 | 控件库 | ❌ 不用 antd | Radix（headless）+ shadcn/ui 风格 |
 | 图标 | ❌ 不用 LS 自带 | Lucide 或 Phosphor |
@@ -688,9 +732,10 @@ Bottom buttons:
 **为什么不像素级照抄 LS**：
 1. LS 视觉一眼像企业标注平台，与 emerge "software 3.0 工具"叙事不匹配
 2. LS 基于 antd，与 §11.2 day-one dark theme 兼容性差
-3. 团队的"熟悉感"靠**操作流程**（信息架构）保证就够，不需要靠 CSS 像素位置——前者帮你 6 个月不变，后者 6 个月后第一次想加新模块就别扭
+3. 我们采用的两个"模式"——**Data Manager 列表**和 **2 栏 doc-editor**——其实都是行业通用模式（GitHub PR view、Cursor、Linear inbox 都长这样），不是 LS 专属。"借模式"≠"借 LS"，只是 LS 是一个具体优秀样本。
+4. AI 编码（含 Claude Code）在**现代 Tailwind + Radix + shadcn token 体系**下产出更稳——这是项目实际开发节奏的考量，不是审美偏好
 
-最终风格目标：参考 Linear / Vercel / Cursor 的视觉调性——克制现代、单色调主导、一个 accent，留白宽，圆角小到中等。
+最终风格目标：参考 Linear / Vercel / Cursor 的视觉调性——克制现代、单色调主导、一个 accent，留白宽，圆角小到中等。**完全不向 LS 视觉妥协**。
 
 ### 11.4 这三点对 R8 的影响
 
@@ -716,12 +761,12 @@ This document is intentionally a **single overall design** rather than feature-c
 | **R5 — Confidence Loop & Calibration** | Judge integration; counterexample regression computation; JudgeCalibration table + Beta updates; UI surfacing of human review queue | R4 |
 | **R6 — AutoResearch** | AutoResearchRun table; Reflexion loop; action toolkit dispatch（仅文本类 action）；turn history rendering; manual + semi-automatic triggers | R5 |
 | **R7 — Templates & API publish** | Template table + 5 builtin seeders（仅 schema descriptions）; Save-as-Template; API publish + key + feedback routing; rate limiting | R3 (parallel to R4) |
-| **R8 — UI** | **首要 task：建立 §11 的三层底座**（i18n catalog + `useT` hook、light/dark token system、Radix/shadcn 基础组件）；之后才铺 Document list page、Workspace correction view (2-column)、Schema editor panel（核心面）、AutoResearch run viewer、Project page header / publish flow | R2 onwards, in parallel with backend slices |
+| **R8 — UI** | **首要 task：建立 §11 的三层底座**（i18n catalog + `useT` hook、light/dark token system、Radix/shadcn 基础组件）；之后才铺 Document list page、Studio (per-doc correction view, 2-column)、Schema editor panel（核心面）、AutoResearch run viewer、Project page header / publish flow | R2 onwards, in parallel with backend slices |
 
 R1, R2, R3 是串行 foundation。R4–R7 可以双人并行。R8 跟随每个后端 slice 落地。
 
 writing-plans 可参考的 v1 milestone 结构：
-- **M1 Walking skeleton** — R1 + R2 + R3 最小：用户能上传、zero-shot 提取、在 workspace 编辑 JSON、保存矫正。无 judge、无 AutoResearch、无 Templates。
+- **M1 Walking skeleton** — R1 + R2 + R3 最小：用户能上传、zero-shot 提取、在 Studio 编辑 JSON、保存矫正。无 judge、无 AutoResearch、无 Templates。
 - **M2 Confidence** — R4 + R5：counterexample 路径、judge、calibration、人审队列。项目级 confidence score 可见。
 - **M3 Evolution** — R6：AutoResearch run loop、action toolkit（纯文本动作）、turn history。
 - **M4 Reuse + ship** — R7 + R8 polish：Templates、API publish、公开 extract 端点、反馈回路端到端跑通。
