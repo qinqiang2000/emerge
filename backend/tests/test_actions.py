@@ -74,7 +74,7 @@ def test_edit_global_notes():
 
 
 def test_remove_unknown_field_raises():
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         apply_action(_baseline(), "", RemoveFieldAction(field_name="nope"))
 
 

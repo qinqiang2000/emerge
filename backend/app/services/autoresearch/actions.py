@@ -80,7 +80,7 @@ def _find(schema: list[SchemaField], name: str) -> int:
     for i, f in enumerate(schema):
         if f.name == name:
             return i
-    raise KeyError(f"field {name!r} not in schema")
+    raise ValueError(f"field {name!r} not in schema")
 
 
 def _replace(schema: list[SchemaField], idx: int, new: SchemaField) -> list[SchemaField]:
