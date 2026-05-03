@@ -59,3 +59,22 @@ async def test_upload_into_other_workspace_404(client, tmp_path, monkeypatch):
         headers=h2,
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_document_detail(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    h, pid = await _auth_and_project(client)
+    did = (
+        await client.post(
+            f"/api/v1/projects/{pid}/documents",
+            files=[("files", ("a.pdf", io.BytesIO(b"AAA"), "application/pdf"))],
+            headers=h,
+        )
+    ).json()[0]["id"]
+    resp = await client.get(f"/api/v1/projects/{pid}/documents/{did}", headers=h)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["filename"] == "a.pdf"
+    assert body["latest_prediction"] is None
+    assert body["latest_annotation"] is None

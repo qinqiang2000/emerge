@@ -14,3 +14,8 @@ class DocumentOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DocumentDetailOut(DocumentOut):
+    latest_prediction: dict | None = None
+    latest_annotation: dict | None = None

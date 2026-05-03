@@ -8,7 +8,7 @@ from app.errors import EmergeError, ErrorCode
 from app.models.document import Document
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.document import DocumentOut
+from app.schemas.document import DocumentDetailOut, DocumentOut
 from app.services.storage import save_upload
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["documents"])
@@ -69,3 +69,26 @@ async def list_documents(
         )
     ).scalars().all()
     return [DocumentOut.model_validate(d) for d in rows]
+
+
+@router.get("/{document_id}", response_model=DocumentDetailOut)
+async def get_document(
+    project_id: int,
+    document_id: int,
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentDetailOut:
+    await _project_or_404(session, project_id, workspace_id)
+    d = (
+        await session.execute(
+            select(Document).where(
+                Document.id == document_id, Document.project_id == project_id
+            )
+        )
+    ).scalar_one_or_none()
+    if d is None:
+        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
+    payload = DocumentOut.model_validate(d).model_dump()
+    payload["latest_prediction"] = None  # populated in R3
+    payload["latest_annotation"] = None  # populated in R4
+    return DocumentDetailOut(**payload)
