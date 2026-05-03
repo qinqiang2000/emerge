@@ -18,7 +18,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 async def list_templates(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
-):
+) -> list[TemplateOut]:
     rows = (
         await session.execute(
             select(Template)
@@ -26,7 +26,7 @@ async def list_templates(
             .order_by(Template.builtin.desc(), Template.id.desc())
         )
     ).scalars().all()
-    return [TemplateOut.from_orm_row(r) for r in rows]
+    return [TemplateOut.model_validate(r) for r in rows]
 
 
 @router.get("/{template_id}", response_model=TemplateOut)
@@ -34,7 +34,7 @@ async def get_template(
     template_id: int,
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
-):
+) -> TemplateOut:
     row = (
         await session.execute(
             select(Template).where(
@@ -45,7 +45,7 @@ async def get_template(
     ).scalar_one_or_none()
     if row is None:
         raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
-    return TemplateOut.from_orm_row(row)
+    return TemplateOut.model_validate(row)
 
 
 @router.post(
@@ -59,7 +59,7 @@ async def save_as_template(
     user: User = Depends(current_user),
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
-):
+) -> TemplateOut:
     project = (
         await session.execute(
             select(Project).where(
@@ -113,4 +113,4 @@ async def save_as_template(
     session.add(tpl)
     await session.commit()
     await session.refresh(tpl)
-    return TemplateOut.from_orm_row(tpl)
+    return TemplateOut.model_validate(tpl)

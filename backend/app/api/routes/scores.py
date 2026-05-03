@@ -148,6 +148,7 @@ async def trigger_judge(
     doc_ids = (
         await session.execute(vibe_check_predictions_query(project_id))
     ).scalars().all()
+    doc_ids = doc_ids[:50]
     # Serial commits per run_judge are acceptable: vibe-check is capped at 50 per spec §4.1.
     judged: list[int] = []
     failed: list[int] = []

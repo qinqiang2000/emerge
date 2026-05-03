@@ -201,6 +201,6 @@ async def record_human_verdict_pair(
     else:
         cal.tn += 1
     cal.observation_count += 1
-    await session.commit()
+    await session.flush()
     await session.refresh(cal)
     return cal

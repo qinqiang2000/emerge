@@ -16,7 +16,7 @@ async def test_list_templates_includes_builtins(client, db_session):
     from app.models.user import User
     from sqlalchemy import select
 
-    user_id = (await db_session.execute(select(User))).scalar_one().id
+    user_id = (await db_session.execute(select(User).order_by(User.id).limit(1))).scalar_one().id
     db_session.add(
         Template(
             workspace_id=None,
@@ -129,3 +129,45 @@ async def test_save_as_duplicate_name_without_flag_409(client):
         f"/api/v1/templates/projects/{pid}/save-as-template", json=payload, headers=h
     )
     assert r2.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_get_template_cross_workspace_404(client, db_session):
+    """GET /templates/{id} returns 404 when the template belongs to a different workspace."""
+    from sqlalchemy import select
+
+    from app.models.template import Template
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMembership
+
+    # Create two users in separate workspaces
+    await _auth(client, "cw1@cw.com")
+    h2 = await _auth(client, "cw2@cw.com")
+
+    rows = (await db_session.execute(select(User).order_by(User.id))).scalars().all()
+    user1 = next(u for u in rows if u.email == "cw1@cw.com")
+    ws1 = (
+        await db_session.execute(
+            select(WorkspaceMembership).where(WorkspaceMembership.user_id == user1.id)
+        )
+    ).scalar_one().workspace_id
+
+    # Create a template belonging to workspace 1
+    tpl = Template(
+        workspace_id=ws1,
+        name="ws1_only",
+        description="d",
+        version=1,
+        schema_json=[],
+        global_notes="",
+        recommended_model_id="m",
+        created_by=user1.id,
+        builtin=False,
+    )
+    db_session.add(tpl)
+    await db_session.commit()
+    await db_session.refresh(tpl)
+
+    # User 2 (different workspace) should get 404
+    resp = await client.get(f"/api/v1/templates/{tpl.id}", headers=h2)
+    assert resp.status_code == 404

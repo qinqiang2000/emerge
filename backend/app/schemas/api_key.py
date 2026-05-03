@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-_API_CODE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
+_API_CODE = re.compile(r"^[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$|^[a-z0-9]$")
 
 
 class PublishIn(BaseModel):
@@ -13,7 +13,7 @@ class PublishIn(BaseModel):
     @classmethod
     def _check(cls, v: str) -> str:
         if not _API_CODE.match(v):
-            raise ValueError("api_code must be lowercase alphanumeric with hyphens, 1-64 chars")
+            raise ValueError("api_code must be lowercase alphanumeric with hyphens, 1-64 chars, no consecutive hyphens")
         return v
 
 

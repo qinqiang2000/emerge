@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.schema_field import SchemaField
 
@@ -11,26 +11,20 @@ class TemplateOut(BaseModel):
     name: str
     description: str
     version: int
-    schema: list[SchemaField]
+    schema: list[SchemaField] = Field(validation_alias="schema_json")
     global_notes: str
     recommended_model_id: str
     builtin: bool
     created_at: datetime
 
+    model_config = {"from_attributes": True, "populate_by_name": True, "protected_namespaces": ()}
+
+    @field_validator("schema", mode="before")
     @classmethod
-    def from_orm_row(cls, row) -> "TemplateOut":
-        return cls(
-            id=row.id,
-            workspace_id=row.workspace_id,
-            name=row.name,
-            description=row.description,
-            version=row.version,
-            schema=[SchemaField(**f) for f in row.schema_json],
-            global_notes=row.global_notes,
-            recommended_model_id=row.recommended_model_id,
-            builtin=row.builtin,
-            created_at=row.created_at,
-        )
+    def _coerce_schema(cls, v):
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            return [SchemaField(**f) for f in v]
+        return v
 
 
 class TemplateSaveAsIn(BaseModel):

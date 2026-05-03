@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, Request, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,16 @@ from app.services.ratelimit import _extract_limit, limiter
 from app.services.storage import save_upload
 
 router = APIRouter(tags=["public"])
+
+
+class PublicExtractOut(BaseModel):
+    entities: list[dict]
+    project_version: int
+    prediction_id: int
+
+
+class PublicFeedbackOut(BaseModel):
+    counterexample_id: int
 
 
 async def _resolve_project(session: AsyncSession, api_code: str) -> Project:
@@ -58,12 +69,12 @@ async def _authenticate_key(
     for row in rows:
         if verify_api_key(presented, prefix=row.prefix, key_hash=row.key_hash):
             row.last_used_at = datetime.now(tz=timezone.utc)
-            await session.commit()
+            await session.flush()
             return row
     raise EmergeError(ErrorCode.UNAUTHORIZED, status_code=401)
 
 
-@router.post("/extract/{api_code}")
+@router.post("/extract/{api_code}", response_model=PublicExtractOut)
 @limiter.limit(_extract_limit)
 async def public_extract(
     request: Request,
@@ -72,7 +83,7 @@ async def public_extract(
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
     provider: Provider = Depends(get_provider_dep),
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> PublicExtractOut:
     project = await _resolve_project(session, api_code)
     await _authenticate_key(session, project.id, x_api_key)
 
@@ -92,15 +103,18 @@ async def public_extract(
     await session.commit()
     await session.refresh(doc)
 
-    pred = await extract_document(doc.id, session=session, provider=provider)
-    return {
-        "entities": pred.output,
-        "project_version": pred.project_version_id,
-        "prediction_id": pred.id,
-    }
+    try:
+        pred = await extract_document(doc.id, session=session, provider=provider)
+    except ValueError as exc:
+        raise EmergeError(ErrorCode.CONFLICT, status_code=409, message_override=str(exc)) from exc
+    return PublicExtractOut(
+        entities=pred.output,
+        project_version=pred.project_version_id,
+        prediction_id=pred.id,
+    )
 
 
-@router.post("/extract/{api_code}/feedback")
+@router.post("/extract/{api_code}/feedback", response_model=PublicFeedbackOut)
 @limiter.limit(_extract_limit)
 async def public_feedback(
     request: Request,
@@ -108,7 +122,7 @@ async def public_feedback(
     payload: FeedbackIn,
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
     session: AsyncSession = Depends(get_session),
-) -> dict:
+) -> PublicFeedbackOut:
     project = await _resolve_project(session, api_code)
     await _authenticate_key(session, project.id, x_api_key)
     try:
@@ -124,4 +138,4 @@ async def public_feedback(
         raise EmergeError(
             ErrorCode.VALIDATION_FAILED, status_code=422, message_override=str(exc)
         ) from exc
-    return {"counterexample_id": ann.id}
+    return PublicFeedbackOut(counterexample_id=ann.id)

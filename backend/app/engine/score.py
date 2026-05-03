@@ -1,6 +1,5 @@
+import math
 from enum import Enum
-
-from scipy import stats
 
 PRIOR_ALPHA = 8
 PRIOR_BETA = 2
@@ -26,7 +25,14 @@ class HumanVerdict(str, Enum):
 def verdict_pair_weight(
     judge: JudgeVerdict, human: HumanVerdict, *, calibrated: float = 0.8
 ) -> float:
-    """Spec §4.1 verdict pair → weight table."""
+    """Spec §4.1 verdict pair → weight table.
+
+    Special cases:
+    - UP + FIXED = 1.0: judge said the field looked good but the human still
+      corrected it; we give benefit of the doubt and credit the judge rather
+      than penalising it, because the fix may have been cosmetic.
+    - Any other combination not explicitly listed returns 0.0.
+    """
     if judge is JudgeVerdict.UP and human is HumanVerdict.UP:
         return 1.0
     if judge is JudgeVerdict.UP and human is HumanVerdict.DOWN:
@@ -40,8 +46,8 @@ def verdict_pair_weight(
     if judge in (JudgeVerdict.DOWN, JudgeVerdict.UNCERTAIN) and human is HumanVerdict.DOWN:
         return 0.0
     if judge is JudgeVerdict.UP and human is HumanVerdict.FIXED:
-        return 1.0  # judge said up, human still fixed → benefit of the doubt: weight 1
-    return 0.0  # any other combination is treated as 0
+        return 1.0
+    return 0.0
 
 
 def compute_judge_component(
@@ -78,6 +84,15 @@ def precision_point_estimate(alpha: float, beta: float) -> float:
 
 
 def precision_ci_95(alpha: float, beta: float) -> tuple[float, float]:
-    lo = stats.beta.ppf(0.025, alpha, beta)
-    hi = stats.beta.ppf(0.975, alpha, beta)
-    return float(lo), float(hi)
+    """Wilson score interval derived from Beta(alpha, beta) posterior.
+
+    Treats p = alpha / (alpha + beta) as the point estimate and n = alpha + beta
+    as the effective sample size, then applies the standard Wilson formula with
+    z = 1.96 (95 % two-sided coverage).
+    """
+    z = 1.96
+    n = alpha + beta
+    p = alpha / n
+    centre = (n * p + z * z / 2) / (n + z * z)
+    margin = z * math.sqrt(n * p * (1 - p) + z * z / 4) / (n + z * z)
+    return max(0.0, centre - margin), min(1.0, centre + margin)

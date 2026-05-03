@@ -12,10 +12,7 @@ def key_or_remote(request: Request) -> str:
 
 
 def _extract_limit() -> str:
-    """Callable limit so tests can monkeypatch EXTRACT_RATE_LIMIT."""
-    import app.services.ratelimit as _self
-
-    return _self.EXTRACT_RATE_LIMIT
+    return EXTRACT_RATE_LIMIT
 
 
-limiter = Limiter(key_func=key_or_remote, default_limits=["60/minute"])
+limiter = Limiter(key_func=key_or_remote)
