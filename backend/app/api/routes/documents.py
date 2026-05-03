@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import current_user, current_workspace_id
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
+from app.models.annotation import Annotation, AnnotationStatus
 from app.models.document import Document
 from app.models.prediction import Prediction
 from app.models.project import Project
@@ -110,5 +111,26 @@ async def get_document(
         if latest
         else None
     )
-    payload["latest_annotation"] = None  # populated in R4
+    latest_ann = (
+        await session.execute(
+            select(Annotation)
+            .where(
+                Annotation.document_id == d.id,
+                Annotation.role == "none",
+                Annotation.status == AnnotationStatus.SAVED.value,
+            )
+            .order_by(Annotation.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    payload["latest_annotation"] = (
+        {
+            "id": latest_ann.id,
+            "output": latest_ann.output,
+            "role": latest_ann.role,
+            "notes": latest_ann.notes,
+        }
+        if latest_ann
+        else None
+    )
     return DocumentDetailOut(**payload)
