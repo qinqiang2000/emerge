@@ -1,10 +1,9 @@
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Awaitable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from app.schemas.schema_field import SchemaField
-from app.services.autoresearch.actions import Action, apply_action
+from app.services.autoresearch.actions import apply_action
 from app.services.autoresearch.researcher import ResearcherProvider, ResearcherState
 
 log = logging.getLogger(__name__)
