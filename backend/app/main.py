@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,16 +10,18 @@ from app.errors import register_error_handler
 from app.services.builtin_templates import seed_builtin_templates
 from app.settings import settings
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     async with SessionFactory() as session:
         try:
             await seed_builtin_templates(session)
-        except Exception:
-            # Pre-bootstrap (no users yet) or transient FK issue — leave seeding
-            # to a later request-driven retry. Logged elsewhere.
-            pass
+        except Exception as exc:
+            # Pre-bootstrap path (DB not migrated yet, or no users for FK target).
+            # Resilient on startup but surface real failures to operators.
+            logger.warning("seed_builtin_templates failed at startup: %s", exc, exc_info=True)
     yield
 
 

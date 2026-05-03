@@ -3,8 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.template import Template
 from app.models.user import User
-
-_RECOMMENDED_MODEL = "gemini-2.5-flash"
+from app.settings import settings
 
 BUILTINS: list[dict] = [
     {
@@ -88,6 +87,7 @@ async def seed_builtin_templates(session: AsyncSession) -> None:
         await session.execute(select(User).order_by(User.id).limit(1))
     ).scalar_one_or_none()
     creator_id = user.id if user else 0
+    recommended_model = settings.default_model_gemini
     for spec in BUILTINS:
         existing = (
             await session.execute(
@@ -106,7 +106,7 @@ async def seed_builtin_templates(session: AsyncSession) -> None:
                 version=1,
                 schema_json=spec["schema_json"],
                 global_notes=spec["global_notes"],
-                recommended_model_id=_RECOMMENDED_MODEL,
+                recommended_model_id=recommended_model,
                 created_by=creator_id,
                 builtin=True,
             )
