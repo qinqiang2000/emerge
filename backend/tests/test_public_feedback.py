@@ -59,6 +59,17 @@ async def test_feedback_with_mismatched_prediction_returns_422(client, db_sessio
 
 
 @pytest.mark.asyncio
+async def test_feedback_unknown_api_code_404(client):
+    """Resolve runs before auth — unknown api_code is always 404."""
+    fb = await client.post(
+        "/extract/nonexistent/feedback",
+        json={"request_id": 1, "correct_output": [{"x": 1}]},
+        headers={"X-Api-Key": "ek_DEADBEEF-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    )
+    assert fb.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_feedback_missing_key_401(client, db_session, monkeypatch, tmp_path):
     from tests.test_public_extract import _setup_published_project
 
