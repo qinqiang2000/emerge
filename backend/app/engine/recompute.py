@@ -76,28 +76,18 @@ async def recompute_project_score(
     (e.g. the public /score endpoint until R6/R7 plumb the production Provider). In that
     case CE regression is skipped and ce_score=None per spec §4.1 fallback (empty pool
     treated as 1.0). Pass a real callable from contexts that can re-run extraction.
+
+    Aggregation: spec §4.1 defines per-Project judge_component as the *mean of
+    per-Document judge_components*, not a flat field-weighted average across the
+    whole project. We compute one judge_component per vibe-check doc (each is
+    field-weighted within the doc) and then average them. This keeps short docs
+    and long docs (e.g. invoices with many line items) on equal footing in the
+    project-level number; per-field detail is still available via per_field_confidence.
     """
-    # 1. find vibe-check docs and their latest predictions
+    # 1. vibe-check docs
     doc_ids = (
         await session.execute(vibe_check_predictions_query(project_id))
     ).scalars().all()
-    pairs: list[tuple[JudgeVerdict, HumanVerdict]] = []
-    for did in doc_ids:
-        latest = (
-            await session.execute(
-                select(Prediction)
-                .where(Prediction.document_id == did)
-                .order_by(Prediction.id.desc())
-                .limit(1)
-            )
-        ).scalar_one()
-        for ent_idx, fields in (latest.per_field_confidence or {}).items():
-            for fname, verdict_str in fields.items():
-                try:
-                    j = JudgeVerdict(verdict_str)
-                except ValueError:
-                    continue
-                pairs.append((j, HumanVerdict.NOT_SEEN))
 
     # 2. calibration → judge_precision_calibrated
     cal = (
@@ -113,8 +103,33 @@ async def recompute_project_score(
     a, b = beta_posterior(tp=tp, fp=fp)
     calibrated = precision_point_estimate(a, b)
 
-    # 3. judge component
-    judge_component = compute_judge_component(pairs, judge_precision_calibrated=calibrated)
+    # 3. per-doc judge_component, then mean (spec §4.1)
+    per_doc_judge: list[float] = []
+    observation_count = 0  # total parseable verdicts across the vibe-check set
+    for did in doc_ids:
+        latest = (
+            await session.execute(
+                select(Prediction)
+                .where(Prediction.document_id == did)
+                .order_by(Prediction.id.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+        doc_pairs: list[tuple[JudgeVerdict, HumanVerdict]] = []
+        for ent_idx, fields in (latest.per_field_confidence or {}).items():
+            for fname, verdict_str in fields.items():
+                try:
+                    j = JudgeVerdict(verdict_str)
+                except ValueError:
+                    continue
+                doc_pairs.append((j, HumanVerdict.NOT_SEEN))
+        observation_count += len(doc_pairs)
+        per_doc_judge.append(
+            compute_judge_component(doc_pairs, judge_precision_calibrated=calibrated)
+        )
+    judge_component = (
+        sum(per_doc_judge) / len(per_doc_judge) if per_doc_judge else 1.0
+    )
 
     # 4. counterexample regression
     ce_rows = (
@@ -143,7 +158,7 @@ async def recompute_project_score(
         score=score,
         judge_component=judge_component,
         ce_component=ce_component_for_return,
-        observation_count=len(pairs),
+        observation_count=observation_count,
         vibe_check_size=len(doc_ids),
     )
 

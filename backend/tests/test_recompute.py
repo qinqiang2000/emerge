@@ -117,6 +117,53 @@ async def test_recompute_score_with_one_judge_up_and_no_counterexamples(db_sessi
 
 
 @pytest.mark.asyncio
+async def test_recompute_score_is_doc_weighted_not_field_weighted(db_session):
+    """Spec §4.1: per-Project score = mean of per-Document scores. A doc with
+    many fields must not dominate a doc with few fields when computing the
+    project-level number — otherwise long-line-item invoices would swamp the
+    short ones in the project-level signal.
+    """
+    uid, pid, docs = await _setup_with_two_docs(db_session)
+    # doc[0]: single field, judge says up → doc_judge = 0.8 (calibrated prior)
+    db_session.add(
+        Prediction(
+            document_id=docs[0],
+            project_version_id=None,
+            model_id="m",
+            prompt_hash="h",
+            output=[{"a": 1}],
+            per_field_confidence={"0": {"a": "up"}},
+            status=PredictionStatus.SUCCESS.value,
+        )
+    )
+    # doc[1]: three fields, all judge=down with NOT_SEEN human → doc_judge = 0.0
+    db_session.add(
+        Prediction(
+            document_id=docs[1],
+            project_version_id=None,
+            model_id="m",
+            prompt_hash="h2",
+            output=[{"x": 1, "y": 2, "z": 3}],
+            per_field_confidence={"0": {"x": "down", "y": "down", "z": "down"}},
+            status=PredictionStatus.SUCCESS.value,
+        )
+    )
+    await db_session.commit()
+
+    async def rerun(_doc_id):
+        return []
+
+    result = await recompute_project_score(project_id=pid, session=db_session, rerun=rerun)
+    # doc-weighted: (0.8 + 0.0) / 2 = 0.4
+    # field-weighted (wrong) would give (0.8 + 0 + 0 + 0) / 4 = 0.2
+    assert result.judge_component == pytest.approx(0.4, abs=1e-3)
+    # composite score = 0.7*0.4 + 0.3*1.0 = 0.58
+    assert result.score == pytest.approx(0.7 * 0.4 + 0.3 * 1.0, abs=1e-3)
+    # observation_count is total verdicts across the vibe-check set
+    assert result.observation_count == 4
+
+
+@pytest.mark.asyncio
 async def test_vibe_check_re_includes_doc_after_re_extraction(db_session):
     """Spec §4.1: a doc whose old saved annotation pre-dates a newly generated
     Prediction (e.g. after schema update) re-enters the vibe-check set, because

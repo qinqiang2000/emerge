@@ -73,13 +73,17 @@ async def run_judge(
         await session.execute(select(Prediction).where(Prediction.id == prediction_id))
     ).scalar_one()
     doc = (await session.execute(select(Document).where(Document.id == pred.document_id))).scalar_one()
+    # Production predictions are always pinned to a ProjectVersion by extract_document.
+    # `Prediction.project_version_id` is nullable on the schema (legacy / test fixtures),
+    # so we tolerate a missing version here and fall back to the bare system frame
+    # rather than crashing the /judge loop.
     version = (
         await session.execute(
             select(ProjectVersion).where(ProjectVersion.id == pred.project_version_id)
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
 
-    system = _judge_prompt(version, pred.output)
+    system = _judge_prompt(version, pred.output) if version is not None else JUDGE_SYSTEM_FRAME
     try:
         with open(doc.file_path, "rb") as fh:
             body = fh.read()

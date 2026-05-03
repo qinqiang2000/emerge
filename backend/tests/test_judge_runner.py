@@ -88,3 +88,21 @@ async def test_run_judge_failure_records_empty(db_session, tmp_path):
     await db_session.refresh(pred)
     # judge failure is non-fatal — confidence stays {}; UI shows "judge unavailable"
     assert pred.per_field_confidence == {}
+
+
+@pytest.mark.asyncio
+async def test_run_judge_tolerates_unpinned_project_version(db_session, tmp_path):
+    """A Prediction whose project_version_id is NULL (legacy / test fixture state)
+    must not crash run_judge. The judge runs with the bare system frame.
+    """
+    p, v, d, pred = await _scaffold(db_session)
+    pred.project_version_id = None
+    fp = tmp_path / "x"
+    fp.write_bytes(b"PDF")
+    d.file_path = str(fp)
+    await db_session.commit()
+
+    fake = FakeJudgeProvider(canned=[{"0": {"shop_name": "up"}}])
+    await run_judge(pred.id, session=db_session, judge=fake)
+    await db_session.refresh(pred)
+    assert pred.per_field_confidence == {"0": {"shop_name": "up"}}
