@@ -12,7 +12,9 @@ from app.errors import EmergeError, ErrorCode
 from app.models.api_key import ApiKey
 from app.models.document import Document, DocumentStatus
 from app.models.project import Project
+from app.schemas.annotation import FeedbackIn
 from app.services.api_key import parse_prefix, verify_api_key
+from app.services.corrections import PredictionScopeError, save_counterexample
 from app.services.storage import save_upload
 
 router = APIRouter(tags=["public"])
@@ -93,3 +95,28 @@ async def public_extract(
         "project_version": pred.project_version_id,
         "prediction_id": pred.id,
     }
+
+
+@router.post("/extract/{api_code}/feedback")
+async def public_feedback(
+    api_code: str,
+    payload: FeedbackIn,
+    x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    project = await _resolve_project(session, api_code)
+    await _authenticate_key(session, project.id, x_api_key)
+    try:
+        ann = await save_counterexample(
+            session=session,
+            project_id=project.id,
+            prediction_id=payload.request_id,
+            correct_output=payload.correct_output,
+            user_id=0,
+            notes=payload.notes,
+        )
+    except PredictionScopeError as exc:
+        raise EmergeError(
+            ErrorCode.VALIDATION_FAILED, status_code=422, message_override=str(exc)
+        ) from exc
+    return {"counterexample_id": ann.id}
