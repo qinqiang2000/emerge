@@ -15,3 +15,8 @@ def get_provider(name: str | None = None) -> "Provider":
     if name == "gemini":
         return GeminiProvider()
     raise ValueError(f"unknown provider {name!r}")
+
+
+def get_provider_dep():
+    """FastAPI dependency. Returns the configured provider singleton."""
+    return get_provider()

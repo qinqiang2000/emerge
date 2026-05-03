@@ -35,14 +35,23 @@ async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
 
 
 @pytest_asyncio.fixture
-async def app(db_session):
-    app = create_app()
+async def app(db_session, db_engine):
+    import app.db as db_module
+
+    application = create_app()
 
     async def _override_session():
         yield db_session
 
-    app.dependency_overrides[get_session] = _override_session
-    return app
+    application.dependency_overrides[get_session] = _override_session
+
+    # Also swap SessionFactory so background tasks (extraction) hit the test's engine
+    original_factory = db_module.SessionFactory
+    db_module.SessionFactory = async_sessionmaker(db_engine, expire_on_commit=False)
+    try:
+        yield application
+    finally:
+        db_module.SessionFactory = original_factory
 
 
 @pytest_asyncio.fixture
