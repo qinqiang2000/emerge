@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.project_version import ProjectVersion, VersionSource
 from app.models.user import User
 from app.schemas.project import ProjectIn, ProjectOut
+from app.settings import settings
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -24,12 +25,21 @@ async def create_project(
     session.add(p)
     await session.flush()
 
+    # v0 model_id is env-driven so it lines up with the configured provider.
+    # NOTE on thinking config: gemini-2.5 uses thinking_budget (int);
+    # gemini-3+ uses thinking_level (str low/medium/high). Provider doesn't
+    # pass either today; revisit when adding thinking support.
+    v0_model = (
+        settings.default_model_gemini
+        if settings.default_provider == "gemini"
+        else settings.default_model_openai
+    )
     v = ProjectVersion(
         project_id=p.id,
         version_number=0,
         schema_snapshot=[],
         global_notes_snapshot="",
-        model_id_snapshot="claude-opus-4-7",
+        model_id_snapshot=v0_model,
         counterexample_ids=[],
         source=VersionSource.INITIAL.value,
         source_metadata={"reason": "project_created"},
