@@ -1,10 +1,13 @@
 import json
+import logging
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from app.services.autoresearch.actions import Action, parse_action
 from app.schemas.schema_field import SchemaField
+from app.services.autoresearch.actions import Action, parse_action
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -134,5 +137,10 @@ class GeminiResearcherProvider:
         )
 
         body = json.loads(resp.text)
-        actions = [parse_action(a) for a in body.get("actions", [])]
+        actions: list[Action] = []
+        for raw in body.get("actions", []):
+            try:
+                actions.append(parse_action(raw))
+            except Exception:
+                log.warning("researcher emitted unrecognised action, skipping: %r", raw)
         return DiagnosisResult(diagnosis=body.get("diagnosis", ""), actions=actions)
