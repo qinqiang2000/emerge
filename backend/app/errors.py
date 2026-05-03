@@ -1,6 +1,7 @@
 from enum import Enum
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 
@@ -37,12 +38,37 @@ class EmergeError(Exception):
         super().__init__(self.message)
 
 
+def _format_validation_summary(errors: list[dict]) -> str:
+    """Flatten pydantic ValidationError list into a single human-readable string.
+
+    Spec §11.1 fixes the envelope to {error_code, error_message_en} — no
+    structured `details` field — so we surface the first validation error's
+    location + message inside `error_message_en` for frontend hinting.
+    """
+    if not errors:
+        return _MESSAGES[ErrorCode.VALIDATION_FAILED]
+    first = errors[0]
+    loc = ".".join(str(p) for p in first.get("loc", []) if p != "body")
+    msg = first.get("msg", "invalid value")
+    return f"{loc}: {msg}" if loc else msg
+
+
 def register_error_handler(app: FastAPI) -> None:
     @app.exception_handler(EmergeError)
     async def _handle_emerge(_: Request, exc: EmergeError):
         return JSONResponse(
             status_code=exc.status_code,
             content={"error_code": exc.code.value, "error_message_en": exc.message},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(_: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error_code": ErrorCode.VALIDATION_FAILED.value,
+                "error_message_en": _format_validation_summary(exc.errors()),
+            },
         )
 
     @app.middleware("http")
