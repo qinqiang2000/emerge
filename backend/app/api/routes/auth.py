@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership, WorkspaceRole
-from app.schemas.auth import RegisterIn
+from app.schemas.auth import LoginIn, RegisterIn, TokenOut
 from app.schemas.user import UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,3 +35,13 @@ async def register(payload: RegisterIn, session: AsyncSession = Depends(get_sess
     await session.commit()
     await session.refresh(user)
     return UserOut.model_validate(user)
+
+
+@router.post("/login", response_model=TokenOut)
+async def login(payload: LoginIn, session: AsyncSession = Depends(get_session)) -> TokenOut:
+    user = (
+        await session.execute(select(User).where(User.email == payload.email))
+    ).scalar_one_or_none()
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise EmergeError(ErrorCode.UNAUTHORIZED, status_code=401)
+    return TokenOut(access_token=create_access_token(subject=str(user.id)))
