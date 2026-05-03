@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    template_id: int | None = None
 
 
 class ProjectOut(BaseModel):

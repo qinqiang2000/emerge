@@ -70,3 +70,62 @@ async def test_template_isolated_per_workspace(client, db_session):
     await db_session.commit()
     resp = await client.get("/api/v1/templates", headers=h2)
     assert all(t["name"] != "custom" for t in resp.json())
+
+
+@pytest.mark.asyncio
+async def test_save_as_template_promotes_active_schema(client):
+    h = await _auth(client, "saveas@s.com")
+    pid = (await client.post("/api/v1/projects", json={"name": "P"}, headers=h)).json()["id"]
+    await client.patch(
+        f"/api/v1/projects/{pid}/schema",
+        json={
+            "schema": [{"name": "shop_name", "type": "string", "description": "店名"}],
+            "global_notes": "JPY",
+            "model_id": "m",
+        },
+        headers=h,
+    )
+    resp = await client.post(
+        f"/api/v1/templates/projects/{pid}/save-as-template",
+        json={"name": "japan_receipts", "description": "from project P"},
+        headers=h,
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "japan_receipts"
+    assert body["version"] == 1
+    assert body["schema"][0]["name"] == "shop_name"
+
+
+@pytest.mark.asyncio
+async def test_save_as_creates_new_version_when_name_exists(client):
+    h = await _auth(client, "sv@s.com")
+    pid = (await client.post("/api/v1/projects", json={"name": "P"}, headers=h)).json()["id"]
+    payload = {"name": "tplA", "description": ""}
+    r1 = await client.post(
+        f"/api/v1/templates/projects/{pid}/save-as-template",
+        json={**payload, "create_new_version": False},
+        headers=h,
+    )
+    assert r1.json()["version"] == 1
+    r2 = await client.post(
+        f"/api/v1/templates/projects/{pid}/save-as-template",
+        json={**payload, "create_new_version": True},
+        headers=h,
+    )
+    assert r2.json()["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_save_as_duplicate_name_without_flag_409(client):
+    h = await _auth(client, "dup@s.com")
+    pid = (await client.post("/api/v1/projects", json={"name": "P"}, headers=h)).json()["id"]
+    payload = {"name": "tplDup", "description": "", "create_new_version": False}
+    r1 = await client.post(
+        f"/api/v1/templates/projects/{pid}/save-as-template", json=payload, headers=h
+    )
+    assert r1.status_code == 201
+    r2 = await client.post(
+        f"/api/v1/templates/projects/{pid}/save-as-template", json=payload, headers=h
+    )
+    assert r2.status_code == 409
