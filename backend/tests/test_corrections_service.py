@@ -139,3 +139,57 @@ async def test_save_counterexample_rejects_cross_project_prediction(db_session):
             correct_output=[{"x": 1}],
             user_id=uid,
         )
+
+
+@pytest.mark.asyncio
+async def test_save_correction_rejects_parent_prediction_from_other_document(db_session):
+    """parent_prediction_id must belong to the same document as the
+    correction; otherwise the linkage in DocumentDetailOut.latest_annotation
+    and any future provenance display would silently point at someone else's
+    prediction. Symmetric to save_counterexample's project-scope guard.
+    """
+    uid, pid, did = await _scaffold(db_session)
+    other_doc = Document(
+        project_id=pid,
+        filename="other.pdf",
+        file_path="/tmp/other",
+        mime_type="application/pdf",
+        page_count=1,
+        byte_size=1,
+        uploaded_by=uid,
+    )
+    db_session.add(other_doc)
+    await db_session.flush()
+    pred_on_other = Prediction(
+        document_id=other_doc.id,
+        project_version_id=None,
+        model_id="m",
+        prompt_hash="h",
+        output=[],
+        per_field_confidence={},
+        status=PredictionStatus.SUCCESS.value,
+    )
+    db_session.add(pred_on_other)
+    await db_session.commit()
+
+    with pytest.raises(PredictionScopeError):
+        await save_correction(
+            session=db_session,
+            document_id=did,
+            output=[{"x": 1}],
+            user_id=uid,
+            parent_prediction_id=pred_on_other.id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_save_correction_rejects_unknown_parent_prediction(db_session):
+    uid, pid, did = await _scaffold(db_session)
+    with pytest.raises(PredictionScopeError):
+        await save_correction(
+            session=db_session,
+            document_id=did,
+            output=[{"x": 1}],
+            user_id=uid,
+            parent_prediction_id=99999,  # does not exist
+        )

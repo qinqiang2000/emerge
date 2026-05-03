@@ -7,7 +7,7 @@ from app.models.prediction import Prediction
 
 
 class PredictionScopeError(Exception):
-    """Prediction does not belong to the supplied project."""
+    """Prediction does not belong to the supplied project or document."""
 
 
 async def save_correction(
@@ -19,6 +19,20 @@ async def save_correction(
     notes: str | None = None,
     parent_prediction_id: int | None = None,
 ) -> Annotation:
+    if parent_prediction_id is not None:
+        # Symmetry with save_counterexample: never let an Annotation reference
+        # a prediction belonging to a different document. Even though the
+        # current API path scopes by document_id, callers reaching this
+        # service layer directly (R5/R6) must not bypass the guard.
+        pred = (
+            await session.execute(
+                select(Prediction).where(Prediction.id == parent_prediction_id)
+            )
+        ).scalar_one_or_none()
+        if pred is None or pred.document_id != document_id:
+            raise PredictionScopeError(
+                f"prediction {parent_prediction_id} does not belong to document {document_id}"
+            )
     ann = Annotation(
         document_id=document_id,
         parent_prediction_id=parent_prediction_id,
