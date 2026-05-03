@@ -146,3 +146,25 @@ async def delete_annotation(
     await session.commit()
     await session.refresh(ann)
     return ann
+
+
+@router.get("/counterexamples", response_model=list[AnnotationOut])
+async def list_counterexamples(
+    project_id: int,
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+):
+    await _project_or_404(session, project_id, workspace_id)
+    rows = (
+        await session.execute(
+            select(Annotation)
+            .join(Document, Document.id == Annotation.document_id)
+            .where(
+                Document.project_id == project_id,
+                Annotation.role == "counterexample",
+                Annotation.status == AnnotationStatus.SAVED.value,
+            )
+            .order_by(Annotation.id.desc())
+        )
+    ).scalars().all()
+    return [AnnotationOut.model_validate(a) for a in rows]
