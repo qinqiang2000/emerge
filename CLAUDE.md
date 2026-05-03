@@ -1,0 +1,44 @@
+# emerge
+
+Software 3.0 文档抽取平台。**Slogan**: Documents in. APIs emerge. They get better as you correct them.
+
+- Spec (single source of truth): `docs/superpowers/specs/2026-05-02-overall-design.md`
+- 实施 plan: `docs/superpowers/plans/2026-05-03-r{1..8}-*.md`，按 R1→R2→R3 串行；R4–R7 可并行；R8 跟随后端 slice 落
+- Milestone: M1 = R1+R2+R3 walking skeleton; M2 = R4+R5; M3 = R6; M4 = R7+R8
+
+## Collaboration
+
+- 中文叙述、简洁、不要 trailing summary
+- 推荐而非菜单 — 给方向 + 主要 trade-off，不要罗列等价选项让用户挑
+- manual-confirm: destructive 操作（drop table、force-push、大改 plan、改 spec）先问
+- 用户是 Karpathy software-3.0 fluent + label-studio veteran，不需要解释 task/annotation/prediction 分离这种基础概念
+- Lab side 不预算 token / $ — 只 `max_turn` 和 `early_stop_no_improvement` 边界 (spec §4.4)
+- v1 scoping 默认 cut 而非 add；用户已经 cut Lab/Prod artefact split、image few-shot、named saved views、project clone
+
+## Engineering
+
+- Backend: FastAPI + async SQLAlchemy 2.x + aiosqlite + alembic + bcrypt + python-jose + pydantic v2，依赖管理 `uv`
+- Frontend: Vite + React 19 + TypeScript + Zustand + react-router 6 + Tailwind v3（CSS-var token system）+ Radix + shadcn-style + Lucide
+- 错误响应统一 `{error_code, error_message_en}` envelope (spec §11.1)；前端按 `error_code` 翻译
+- 主题: light/dark/system 从 day one，**不允许** Tailwind 直接 color class（`bg-gray-100` 等），只用语义 token (`bg-surface`/`text-fg-primary`/...)
+- 测试: `cd backend && uv run pytest -v`；迁移: `uv run alembic upgrade head`
+- 单一 schema 真相: `backend/app/schemas/schema_field.py` 的 `SchemaField` pydantic model
+
+## Hard rules (red lines)
+
+- **没有 image few-shot**。任何 prompt 路径都不准注入 example I/O pairs。要"教模型"只能改 `description` / `global_notes` (spec §1)
+- **没有 bbox / 区域信息**。Annotation 是 JSON 矫正，不存坐标 (spec §3.2)
+- **AutoResearch 永不自动 promote**。output 是候选 ProjectVersion，user 必须显式 activate (spec §5.1)
+- **Counterexample 永不进 runtime prompt**。仅作 AutoResearch 回归测试集 (spec §1)
+- **Project.active_version_id 是 live read**：每次公开 API 调用即时读，不缓存、不版本钉 (spec §7.2)
+
+## 仓库布局
+
+```
+emerge/
+├── backend/                     # 由 R1 Task 1 创建；运行: cd backend && uv run uvicorn app.main:app --reload
+├── frontend/                    # 由 R8 Task 1 创建；运行: cd frontend && npm run dev
+└── docs/superpowers/{specs,plans}/
+```
+
+doc-intel-legacy（`/Users/qinqiang02/colab/codespace/ai/doc-intel/`）是上一代项目，emerge 不导入、不迁移其数据；只作 stack 默认 / UX 反例参考。
