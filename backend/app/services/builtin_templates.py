@@ -5,6 +5,8 @@ from app.models.template import Template
 from app.models.user import User
 from app.settings import settings
 
+SYSTEM_USER_ID = 1
+
 BUILTINS: list[dict] = [
     {
         "name": "china_vat",
@@ -86,7 +88,7 @@ async def seed_builtin_templates(session: AsyncSession) -> None:
     user = (
         await session.execute(select(User).order_by(User.id).limit(1))
     ).scalar_one_or_none()
-    creator_id = user.id if user else 0
+    creator_id = user.id if user else SYSTEM_USER_ID
     recommended_model = settings.default_model_gemini
     for spec in BUILTINS:
         existing = (

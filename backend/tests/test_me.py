@@ -1,5 +1,7 @@
 import pytest
 
+from app.core.security import create_access_token
+
 
 @pytest.mark.asyncio
 async def test_me_requires_auth(client):
@@ -36,8 +38,6 @@ async def test_me_with_non_numeric_sub_returns_unauthorized(client):
     map to 401 UNAUTHORIZED, not 500. Guards against malformed/forged subs
     bypassing the auth envelope contract.
     """
-    from app.core.security import create_access_token
-
     tok = create_access_token(subject="not-a-number")
     resp = await client.get("/api/v1/me", headers={"Authorization": f"Bearer {tok}"})
     assert resp.status_code == 401

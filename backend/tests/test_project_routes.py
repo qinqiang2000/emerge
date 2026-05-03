@@ -1,4 +1,9 @@
 import pytest
+from sqlalchemy import select
+
+from app.models.project_version import ProjectVersion
+from app.models.template import Template
+from app.models.user import User
 
 
 async def _auth(client, email="p@p.com"):
@@ -48,10 +53,6 @@ async def test_create_project_creates_initial_version(client, db_session):
     pid = body["id"]
     assert body["active_version_id"] is not None
 
-    from sqlalchemy import select
-
-    from app.models.project_version import ProjectVersion
-
     rows = (
         await db_session.execute(
             select(ProjectVersion).where(ProjectVersion.project_id == pid)
@@ -66,11 +67,7 @@ async def test_create_project_creates_initial_version(client, db_session):
 @pytest.mark.asyncio
 async def test_create_project_from_template_forks_schema(client, db_session):
     h = await _auth(client, "fork@f.com")
-    from app.models.template import Template
-    from app.models.user import User
-    from sqlalchemy import select
-
-    user_id = (await db_session.execute(select(User))).scalar_one().id
+    user_id = (await db_session.execute(select(User).order_by(User.id).limit(1))).scalar_one().id
     db_session.add(
         Template(
             workspace_id=None,

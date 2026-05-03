@@ -1,10 +1,11 @@
 import io
 
 import pytest
+from sqlalchemy import select
 
 from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.prediction import Prediction, PredictionStatus
-from sqlalchemy import select
+from app.models.user import User
 
 
 @pytest.mark.asyncio
@@ -34,9 +35,7 @@ async def test_counterexample_list_excludes_role_none_and_cancelled(
     )
 
     # seed a Prediction + a counterexample directly
-    from app.models.user import User
-
-    user_id = (await db_session.execute(select(User))).scalar_one().id
+    user_id = (await db_session.execute(select(User).order_by(User.id).limit(1))).scalar_one().id
     pred = Prediction(
         document_id=did,
         model_id="m",
@@ -96,8 +95,6 @@ async def test_create_counterexample_endpoint(client, db_session, tmp_path, monk
         )
     ).json()[0]["id"]
     # seed a prediction
-    from app.models.prediction import Prediction, PredictionStatus
-
     pred = Prediction(
         document_id=did,
         model_id="m",

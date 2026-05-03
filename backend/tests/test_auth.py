@@ -1,4 +1,8 @@
 import pytest
+from sqlalchemy import select
+
+from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMembership
 
 
 @pytest.mark.asyncio
@@ -13,12 +17,7 @@ async def test_register_creates_user_and_workspace(client, db_session):
     assert "id" in body
 
     # exactly one Workspace + Membership owner row created
-    from sqlalchemy import select
-
-    from app.models.user import User
-    from app.models.workspace import Workspace, WorkspaceMembership
-
-    user = (await db_session.execute(select(User))).scalar_one()
+    user = (await db_session.execute(select(User).order_by(User.id).limit(1))).scalar_one()
     ws = (await db_session.execute(select(Workspace))).scalar_one()
     mem = (await db_session.execute(select(WorkspaceMembership))).scalar_one()
     assert ws.owner_id == user.id

@@ -1,16 +1,18 @@
 import io
 
 import pytest
+from sqlalchemy import select
+
+from app.engine.providers import get_provider_dep
+from app.engine.providers.fake import FakeProvider
+from app.models.annotation import Annotation, AnnotationRole
+from app.models.project import Project
+from tests.conftest import _setup_published_project
 
 
 @pytest.mark.asyncio
 async def test_public_feedback_creates_counterexample(client, db_session, app, tmp_path, monkeypatch):
-    from tests.test_public_extract import _setup_published_project
-
     api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
-
-    from app.engine.providers import get_provider_dep
-    from app.engine.providers.fake import FakeProvider
 
     fake = FakeProvider(canned=[[{"shop_name": "WRONG"}]])
     app.dependency_overrides[get_provider_dep] = lambda: fake
@@ -33,9 +35,6 @@ async def test_public_feedback_creates_counterexample(client, db_session, app, t
     assert "counterexample_id" in body
 
     # verify a counterexample row exists
-    from app.models.annotation import Annotation, AnnotationRole
-    from sqlalchemy import select
-
     rows = (
         await db_session.execute(
             select(Annotation).where(Annotation.role == AnnotationRole.COUNTEREXAMPLE.value)
@@ -47,8 +46,6 @@ async def test_public_feedback_creates_counterexample(client, db_session, app, t
 
 @pytest.mark.asyncio
 async def test_feedback_with_mismatched_prediction_returns_422(client, db_session, app, tmp_path, monkeypatch):
-    from tests.test_public_extract import _setup_published_project
-
     api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
     fb = await client.post(
         f"/extract/{api_code}/feedback",
@@ -71,8 +68,6 @@ async def test_feedback_unknown_api_code_404(client):
 
 @pytest.mark.asyncio
 async def test_feedback_missing_key_401(client, db_session, monkeypatch, tmp_path):
-    from tests.test_public_extract import _setup_published_project
-
     api_code, _ = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
     fb = await client.post(
         f"/extract/{api_code}/feedback",
@@ -84,8 +79,6 @@ async def test_feedback_missing_key_401(client, db_session, monkeypatch, tmp_pat
 @pytest.mark.asyncio
 async def test_feedback_after_unpublish_returns_403(client, db_session, monkeypatch, tmp_path):
     """Spec §7.2: feedback follows the same 403/404 distinction as extract."""
-    from tests.test_public_extract import _setup_published_project
-
     api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
     tok = (
         await client.post(
@@ -93,9 +86,6 @@ async def test_feedback_after_unpublish_returns_403(client, db_session, monkeypa
         )
     ).json()["access_token"]
     h = {"Authorization": f"Bearer {tok}"}
-    from app.models.project import Project
-    from sqlalchemy import select
-
     pid = (
         await db_session.execute(select(Project).where(Project.api_code == api_code))
     ).scalar_one().id

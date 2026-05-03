@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import select
 
 from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.document import Document
@@ -39,7 +40,7 @@ async def test_lock_succeeds_when_two_corrections_agree(client, db_session):
     await client.patch(f"/api/v1/projects/{pid}/schema", json=payload, headers=h)
 
     # seed two saved Annotations directly into DB whose key sets agree
-    user_id = (await db_session.execute(__import__("sqlalchemy").select(User))).scalar_one().id
+    user_id = (await db_session.execute(select(User).order_by(User.id).limit(1))).scalar_one().id
     for fname in ("a.pdf", "b.pdf"):
         d = Document(
             project_id=pid,

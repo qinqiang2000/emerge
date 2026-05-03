@@ -16,10 +16,12 @@ class ProjectVersionOut(BaseModel):
     source: str
     created_at: datetime
 
-    model_config = {"from_attributes": True, "populate_by_name": True}
+    model_config = {"from_attributes": True, "populate_by_name": True, "protected_namespaces": ()}
 
 
 class SchemaPatchIn(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     schema: list[SchemaField] = Field(default_factory=list)
     global_notes: str = ""
     model_id: str

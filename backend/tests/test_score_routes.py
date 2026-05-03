@@ -3,6 +3,15 @@ import io
 import pytest
 from sqlalchemy import select
 
+from app.engine.judge import FakeJudgeProvider, get_judge_provider
+from app.engine.recompute import DEFAULT_JUDGE_MODEL_VERSION
+from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
+from app.models.document import Document as D
+from app.models.judge_calibration import JudgeCalibration
+from app.models.prediction import Prediction, PredictionStatus
+from app.models.project_version import ProjectVersion
+from app.models.user import User
+
 
 async def _auth_and_project(client) -> tuple[dict, int]:
     await client.post("/api/v1/auth/register", json={"email": "s@s.com", "password": "hunter22"})
@@ -39,8 +48,6 @@ async def test_review_queue_three_buckets(client, db_session, tmp_path, monkeypa
     docs = (
         await client.post(f"/api/v1/projects/{pid}/documents", files=files, headers=h)
     ).json()
-
-    from app.models.prediction import Prediction, PredictionStatus
 
     for d, conf in zip(
         docs,
@@ -88,11 +95,6 @@ async def test_get_score_with_unwired_rerun_treats_ce_pool_as_perfect(
         )
     ).json()[0]["id"]
 
-    from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
-    from app.models.prediction import Prediction, PredictionStatus
-    from app.models.user import User
-    from sqlalchemy import select as _select
-
     pred = Prediction(
         document_id=did,
         model_id="m",
@@ -103,7 +105,7 @@ async def test_get_score_with_unwired_rerun_treats_ce_pool_as_perfect(
     )
     db_session.add(pred)
     await db_session.commit()
-    user = (await db_session.execute(_select(User))).scalar_one()
+    user = (await db_session.execute(select(User).order_by(User.id).limit(1))).scalar_one()
     db_session.add(
         Annotation(
             document_id=did,
@@ -128,9 +130,6 @@ async def test_get_calibration_filters_by_default_judge_model(client, db_session
     not blow up `/calibration`; the endpoint reads only the active/default model.
     """
     h, pid = await _auth_and_project(client)
-    from app.engine.recompute import DEFAULT_JUDGE_MODEL_VERSION
-    from app.models.judge_calibration import JudgeCalibration
-
     db_session.add(
         JudgeCalibration(
             project_id=pid,
@@ -164,10 +163,6 @@ async def test_trigger_judge_writes_per_field_confidence(
         await client.post(f"/api/v1/projects/{pid}/documents", files=files, headers=h)
     ).json()[0]["id"]
 
-    from app.models.document import Document as D
-    from app.models.prediction import Prediction, PredictionStatus
-    from app.models.project_version import ProjectVersion
-
     d = (await db_session.execute(select(D).where(D.id == did))).scalar_one()
     d.file_path = str(fp)
     version = (
@@ -186,8 +181,6 @@ async def test_trigger_judge_writes_per_field_confidence(
     )
     db_session.add(pred)
     await db_session.commit()
-
-    from app.engine.judge import FakeJudgeProvider, get_judge_provider
 
     fake = FakeJudgeProvider(canned=[{"0": {"a": "up"}}])
     app.dependency_overrides[get_judge_provider] = lambda: fake

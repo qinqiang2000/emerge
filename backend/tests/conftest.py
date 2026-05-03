@@ -4,11 +4,14 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db import get_session
 from app.main import create_app
 from app.models.base import Base
+from app.models.project import Project
+from app.models.project_version import ProjectVersion
 
 
 @pytest.fixture(scope="session")
@@ -67,3 +70,41 @@ async def client(app):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         yield c
+
+
+async def _setup_published_project(client, db_session, monkeypatch, tmp_path) -> tuple[str, str]:
+    """Returns (api_code, api_key) for a published project with a locked active version."""
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    await client.post("/api/v1/auth/register", json={"email": "px@px.com", "password": "hunter22"})
+    tok = (
+        await client.post("/api/v1/auth/login", json={"email": "px@px.com", "password": "hunter22"})
+    ).json()["access_token"]
+    h = {"Authorization": f"Bearer {tok}"}
+    pid = (await client.post("/api/v1/projects", json={"name": "P"}, headers=h)).json()["id"]
+    await client.patch(
+        f"/api/v1/projects/{pid}/schema",
+        json={
+            "schema": [{"name": "shop_name", "type": "string", "description": "店名"}],
+            "global_notes": "",
+            "model_id": "m",
+        },
+        headers=h,
+    )
+    proj = (await db_session.execute(select(Project).where(Project.id == pid))).scalar_one()
+    v = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == proj.active_version_id)
+        )
+    ).scalar_one()
+    v.locked = True
+    await db_session.commit()
+
+    await client.post(
+        f"/api/v1/projects/{pid}/publish", json={"api_code": "test-receipts"}, headers=h
+    )
+    key = (
+        await client.post(
+            f"/api/v1/projects/{pid}/api-keys", json={"name": "default"}, headers=h
+        )
+    ).json()["key"]
+    return "test-receipts", key
