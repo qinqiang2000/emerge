@@ -1,3 +1,4 @@
+from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.base import Base, TimestampMixin
 from app.models.document import Document, DocumentStatus
 from app.models.prediction import Prediction, PredictionStatus
@@ -5,4 +6,4 @@ from app.models.project import Project
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership, WorkspaceRole
 
-__all__ = ["Base", "TimestampMixin", "User", "Workspace", "WorkspaceMembership", "WorkspaceRole", "Project", "Document", "DocumentStatus", "Prediction", "PredictionStatus"]
+__all__ = ["Base", "TimestampMixin", "User", "Workspace", "WorkspaceMembership", "WorkspaceRole", "Project", "Document", "DocumentStatus", "Prediction", "PredictionStatus", "Annotation", "AnnotationRole", "AnnotationStatus"]
