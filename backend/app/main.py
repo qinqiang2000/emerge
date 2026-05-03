@@ -1,15 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import public
 from app.api.v1 import api_v1
 from app.db import SessionFactory
-from app.errors import ErrorCode, register_error_handler
+from app.errors import register_error_handler
 from app.services.builtin_templates import seed_builtin_templates
 from app.services.ratelimit import limiter
 from app.settings import settings
@@ -40,16 +38,6 @@ def create_app() -> FastAPI:
     )
     register_error_handler(app)
     app.state.limiter = limiter
-
-    @app.exception_handler(RateLimitExceeded)
-    async def _rate_limit_handler(_: Request, _exc: RateLimitExceeded) -> JSONResponse:
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error_code": ErrorCode.RATE_LIMITED.value,
-                "error_message_en": "Too many requests. Slow down and try again.",
-            },
-        )
 
     app.include_router(api_v1)
     app.include_router(public.router)  # no prefix — public surface

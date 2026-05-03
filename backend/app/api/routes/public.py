@@ -9,13 +9,13 @@ from app.engine.extract import extract_document
 from app.engine.provider import Provider
 from app.engine.providers import get_provider_dep
 from app.errors import EmergeError, ErrorCode
-from app.services.ratelimit import _extract_limit, limiter
 from app.models.api_key import ApiKey
 from app.models.document import Document, DocumentStatus
 from app.models.project import Project
 from app.schemas.annotation import FeedbackIn
 from app.services.api_key import parse_prefix, verify_api_key
 from app.services.corrections import PredictionScopeError, save_counterexample
+from app.services.ratelimit import _extract_limit, limiter
 from app.services.storage import save_upload
 
 router = APIRouter(tags=["public"])
