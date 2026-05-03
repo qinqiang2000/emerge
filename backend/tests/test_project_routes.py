@@ -39,3 +39,25 @@ async def test_get_project_404_for_other_workspace(client):
     pid = (await client.post("/api/v1/projects", json={"name": "P"}, headers=h1)).json()["id"]
     resp = await client.get(f"/api/v1/projects/{pid}", headers=h2)
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_project_creates_initial_version(client, db_session):
+    h = await _auth(client)
+    body = (await client.post("/api/v1/projects", json={"name": "P"}, headers=h)).json()
+    pid = body["id"]
+    assert body["active_version_id"] is not None
+
+    from sqlalchemy import select
+
+    from app.models.project_version import ProjectVersion
+
+    rows = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.project_id == pid)
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].version_number == 0
+    assert rows[0].source == "initial"
+    assert rows[0].schema_snapshot == []

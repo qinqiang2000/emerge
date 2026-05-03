@@ -6,6 +6,7 @@ from app.core.deps import current_user, current_workspace_id
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
 from app.models.project import Project
+from app.models.project_version import ProjectVersion, VersionSource
 from app.models.user import User
 from app.schemas.project import ProjectIn, ProjectOut
 
@@ -21,6 +22,22 @@ async def create_project(
 ) -> ProjectOut:
     p = Project(workspace_id=workspace_id, name=payload.name, created_by=user.id)
     session.add(p)
+    await session.flush()
+
+    v = ProjectVersion(
+        project_id=p.id,
+        version_number=0,
+        schema_snapshot=[],
+        global_notes_snapshot="",
+        model_id_snapshot="claude-opus-4-7",
+        counterexample_ids=[],
+        source=VersionSource.INITIAL.value,
+        source_metadata={"reason": "project_created"},
+        created_by=user.id,
+    )
+    session.add(v)
+    await session.flush()
+    p.active_version_id = v.id
     await session.commit()
     await session.refresh(p)
     return ProjectOut.model_validate(p)
