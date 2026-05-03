@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import _project_or_404, current_user, current_workspace_id
 from app.db import get_session
-from app.engine.recompute import recompute_project_score
 from app.errors import EmergeError, ErrorCode
 from app.models.auto_research_run import (
     AutoResearchRun,
@@ -32,14 +31,17 @@ def get_researcher_provider_dep() -> ResearcherProvider:
 
 
 def get_scorer_dep():
-    """Returns a scorer callable: (schema, notes) -> float.
-    Default uses recompute_project_score with no live rerun (T5; live rerun is R7+ scope).
-    Tests override with a simple lambda.
-    """
-    async def _score(_schema, _notes):
-        return 0.0
+    """Returns a scorer callable: (schema, notes) -> float | Awaitable[float].
 
-    return _score
+    Default raises — production wiring (recompute_project_score with a live
+    rerun callable) lands with R7. Tests substitute via
+    ``app.dependency_overrides[get_scorer_dep] = lambda: <callable>``.
+    Mirrors ``app.engine.judge.get_judge_provider`` so a missing override
+    fails loud rather than silently scoring everything 0.0.
+    """
+    raise NotImplementedError(
+        "configure scorer via dependency_overrides — production wiring lands with R7"
+    )
 
 
 @router.post("/run", response_model=AutoResearchRunOut, status_code=status.HTTP_201_CREATED)
@@ -108,37 +110,57 @@ async def run(
             ErrorCode.INTERNAL_ERROR, status_code=500, message_override=str(e)
         ) from e
 
-    new_version = ProjectVersion(
-        project_id=project_id,
-        parent_version_id=parent.id,
-        version_number=parent.version_number + 1,
-        schema_snapshot=[f.model_dump() for f in result.schema],
-        global_notes_snapshot=result.global_notes,
-        model_id_snapshot=parent.model_id_snapshot,
-        counterexample_ids=parent.counterexample_ids,
-        source=VersionSource.AUTO_RESEARCH.value,
-        source_metadata={"run_id": arr.id, "termination_reason": result.termination_reason},
-        created_by=user.id,
-    )
-    session.add(new_version)
-    await session.flush()
+    try:
+        new_version = ProjectVersion(
+            project_id=project_id,
+            parent_version_id=parent.id,
+            version_number=parent.version_number + 1,
+            schema_snapshot=[f.model_dump() for f in result.schema],
+            global_notes_snapshot=result.global_notes,
+            model_id_snapshot=parent.model_id_snapshot,
+            counterexample_ids=parent.counterexample_ids,
+            source=VersionSource.AUTO_RESEARCH.value,
+            source_metadata={"run_id": arr.id, "termination_reason": result.termination_reason},
+            created_by=user.id,
+        )
+        session.add(new_version)
+        await session.flush()
 
-    arr.output_version_id = new_version.id
-    arr.turn_count = result.turn_count
-    arr.turn_history = [t.__dict__ for t in result.turns]
-    arr.termination_reason = result.termination_reason
+        arr.output_version_id = new_version.id
+        arr.turn_count = result.turn_count
+        arr.turn_history = [t.__dict__ for t in result.turns]
+        arr.termination_reason = result.termination_reason
 
-    if result.termination_reason == "threshold_met":
-        arr.status = AutoResearchStatus.COMPLETED.value
-    elif result.termination_reason in ("no_improvement", "max_turn"):
-        arr.status = AutoResearchStatus.EARLY_STOPPED.value
-    elif result.termination_reason == "error":
-        arr.status = AutoResearchStatus.FAILED.value
-    else:
-        arr.status = AutoResearchStatus.COMPLETED.value
+        if result.termination_reason == "threshold_met":
+            arr.status = AutoResearchStatus.COMPLETED.value
+        elif result.termination_reason in ("no_improvement", "max_turn"):
+            arr.status = AutoResearchStatus.EARLY_STOPPED.value
+        elif result.termination_reason == "error":
+            arr.status = AutoResearchStatus.FAILED.value
+        else:
+            arr.status = AutoResearchStatus.COMPLETED.value
 
-    arr.completed_at = datetime.now(tz=timezone.utc)
-    await session.commit()
+        arr.completed_at = datetime.now(tz=timezone.utc)
+        await session.commit()
+    except Exception as e:
+        # Final commit failed (e.g. version_number unique race, FK error).
+        # Without this guard, arr stays RUNNING forever and blocks every
+        # future POST /run with 409. Reload arr after rollback to avoid
+        # a detached instance, then mark FAILED in a fresh transaction.
+        await session.rollback()
+        arr_reloaded = (
+            await session.execute(
+                select(AutoResearchRun).where(AutoResearchRun.id == arr.id)
+            )
+        ).scalar_one()
+        arr_reloaded.status = AutoResearchStatus.FAILED.value
+        arr_reloaded.termination_reason = TerminationReason.ERROR.value
+        arr_reloaded.completed_at = datetime.now(tz=timezone.utc)
+        await session.commit()
+        raise EmergeError(
+            ErrorCode.INTERNAL_ERROR, status_code=500, message_override=str(e)
+        ) from e
+
     await session.refresh(arr)
     return arr
 

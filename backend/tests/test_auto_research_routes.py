@@ -73,7 +73,13 @@ async def test_run_creates_new_version_and_run_record(client, db_session, app):
 
 @pytest.mark.asyncio
 async def test_concurrent_run_returns_conflict(client, db_session, app):
+    from app.api.routes.auto_research import get_scorer_dep
     from app.models.auto_research_run import AutoResearchRun, AutoResearchStatus
+
+    # FastAPI resolves deps before the route body — get_scorer_dep raises
+    # NotImplementedError by default. Override with a stub even though the
+    # 409 path returns before the scorer is ever called.
+    app.dependency_overrides[get_scorer_dep] = lambda: (lambda schema, notes: 0.0)
 
     h, pid = await _auth_and_project(client)
     db_session.add(
