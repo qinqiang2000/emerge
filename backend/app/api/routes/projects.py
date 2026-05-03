@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_user, current_workspace_id
@@ -7,6 +7,7 @@ from app.db import get_session
 from app.errors import EmergeError, ErrorCode
 from app.models.project import Project
 from app.models.project_version import ProjectVersion, VersionSource
+from app.models.template import Template
 from app.models.user import User
 from app.schemas.project import ProjectIn, ProjectOut
 from app.settings import settings
@@ -21,28 +22,51 @@ async def create_project(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> ProjectOut:
-    p = Project(workspace_id=workspace_id, name=payload.name, created_by=user.id)
-    session.add(p)
-    await session.flush()
-
+    template_id = payload.template_id
+    schema_json: list = []
+    global_notes = ""
     # v0 model_id is env-driven so it lines up with the configured provider.
     # NOTE on thinking config: gemini-2.5 uses thinking_budget (int);
     # gemini-3+ uses thinking_level (str low/medium/high). Provider doesn't
     # pass either today; revisit when adding thinking support.
-    v0_model = (
+    model_id = (
         settings.default_model_gemini
         if settings.default_provider == "gemini"
         else settings.default_model_openai
     )
+    if template_id is not None:
+        tpl = (
+            await session.execute(
+                select(Template).where(
+                    Template.id == template_id,
+                    or_(Template.workspace_id.is_(None), Template.workspace_id == workspace_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if tpl is None:
+            raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
+        schema_json = tpl.schema_json
+        global_notes = tpl.global_notes
+        model_id = tpl.recommended_model_id
+
+    p = Project(
+        workspace_id=workspace_id,
+        name=payload.name,
+        created_by=user.id,
+        template_id=template_id,
+    )
+    session.add(p)
+    await session.flush()
+
     v = ProjectVersion(
         project_id=p.id,
         version_number=0,
-        schema_snapshot=[],
-        global_notes_snapshot="",
-        model_id_snapshot=v0_model,
+        schema_snapshot=schema_json,
+        global_notes_snapshot=global_notes,
+        model_id_snapshot=model_id,
         counterexample_ids=[],
         source=VersionSource.INITIAL.value,
-        source_metadata={"reason": "project_created"},
+        source_metadata={"reason": "project_created", "from_template_id": template_id},
         created_by=user.id,
     )
     session.add(v)

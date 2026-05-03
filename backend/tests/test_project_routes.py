@@ -61,3 +61,48 @@ async def test_create_project_creates_initial_version(client, db_session):
     assert rows[0].version_number == 0
     assert rows[0].source == "initial"
     assert rows[0].schema_snapshot == []
+
+
+@pytest.mark.asyncio
+async def test_create_project_from_template_forks_schema(client, db_session):
+    h = await _auth(client, "fork@f.com")
+    from app.models.template import Template
+    from app.models.user import User
+    from sqlalchemy import select
+
+    user_id = (await db_session.execute(select(User))).scalar_one().id
+    db_session.add(
+        Template(
+            workspace_id=None,
+            name="builtin_for_fork",
+            description="d",
+            version=1,
+            schema_json=[
+                {"name": "shop_name", "type": "string", "description": "店名"},
+            ],
+            global_notes="hi",
+            recommended_model_id="m1",
+            created_by=user_id,
+            builtin=True,
+        )
+    )
+    await db_session.commit()
+    tpl_id = (
+        await db_session.execute(select(Template).where(Template.name == "builtin_for_fork"))
+    ).scalar_one().id
+
+    resp = await client.post(
+        "/api/v1/projects",
+        json={"name": "P", "template_id": tpl_id},
+        headers=h,
+    )
+    body = resp.json()
+    pid = body["id"]
+    assert body["template_id"] == tpl_id
+
+    active = (
+        await client.get(f"/api/v1/projects/{pid}/versions/active", headers=h)
+    ).json()
+    assert active["schema"][0]["name"] == "shop_name"
+    assert active["global_notes"] == "hi"
+    assert active["model_id"] == "m1"

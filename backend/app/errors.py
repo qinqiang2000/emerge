@@ -3,6 +3,7 @@ from enum import Enum
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 
 class ErrorCode(str, Enum):
@@ -12,6 +13,7 @@ class ErrorCode(str, Enum):
     VALIDATION_FAILED = "VALIDATION_FAILED"
     CONFLICT = "CONFLICT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 _MESSAGES: dict[ErrorCode, str] = {
@@ -21,6 +23,7 @@ _MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.VALIDATION_FAILED: "Request validation failed.",
     ErrorCode.CONFLICT: "Resource state conflict.",
     ErrorCode.INTERNAL_ERROR: "An internal error occurred.",
+    ErrorCode.RATE_LIMITED: "Too many requests. Slow down and try again.",
 }
 
 
@@ -68,6 +71,16 @@ def register_error_handler(app: FastAPI) -> None:
             content={
                 "error_code": ErrorCode.VALIDATION_FAILED.value,
                 "error_message_en": _format_validation_summary(exc.errors()),
+            },
+        )
+
+    @app.exception_handler(RateLimitExceeded)
+    async def _handle_rate_limit(_: Request, _exc: RateLimitExceeded):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error_code": ErrorCode.RATE_LIMITED.value,
+                "error_message_en": _MESSAGES[ErrorCode.RATE_LIMITED],
             },
         )
 
