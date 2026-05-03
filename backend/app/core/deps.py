@@ -17,7 +17,12 @@ async def current_user(
         raise EmergeError(ErrorCode.UNAUTHORIZED, status_code=401)
     token = authorization.split(" ", 1)[1].strip()
     payload = decode_access_token(token)
-    user_id = int(payload["sub"])
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, ValueError) as e:
+        # Signature verified but `sub` is missing or non-numeric — treat as
+        # auth failure (401) rather than letting the cast bubble up to a 500.
+        raise EmergeError(ErrorCode.UNAUTHORIZED, status_code=401) from e
     user = (
         await session.execute(select(User).where(User.id == user_id))
     ).scalar_one_or_none()
