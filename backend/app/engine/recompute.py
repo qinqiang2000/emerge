@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from sqlalchemy import Select, and_, exists, select
+from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engine.regression import counterexample_regression_score
@@ -20,20 +20,37 @@ from app.models.prediction import Prediction
 
 
 def vibe_check_predictions_query(project_id: int) -> Select:
-    """Returns SQL: doc_id of Documents in project whose latest Prediction is NOT covered by
-    a later saved Annotation(role='none'). Implemented as: Documents with at least one
-    Prediction AND no saved role=none Annotation.
+    """Spec §4.1: doc_ids of Documents in project whose latest Prediction is NOT covered
+    by a saved Annotation(role='none'). An Annotation covers a Prediction when either
+    (a) Annotation.parent_prediction_id IS NULL (doc-level cover, regardless of which
+    prediction was active when the user saved), or (b) parent_prediction_id equals the
+    document's latest Prediction.id. Re-extraction produces a new Prediction whose id
+    exceeds prior parent_prediction_ids, so a doc with a stale parent-pinned annotation
+    correctly re-enters vibe-check.
+
+    NB: Annotation.id and Prediction.id are independent autoincrement sequences, so
+    bare id comparison across the two tables would not be a reliable temporal check.
     """
-    has_saved_none = exists().where(
+    latest_pred_id = (
+        select(func.max(Prediction.id))
+        .where(Prediction.document_id == Document.id)
+        .correlate(Document)
+        .scalar_subquery()
+    )
+    covered_by_annotation = exists().where(
         and_(
             Annotation.document_id == Document.id,
             Annotation.role == AnnotationRole.NONE.value,
             Annotation.status == AnnotationStatus.SAVED.value,
+            or_(
+                Annotation.parent_prediction_id.is_(None),
+                Annotation.parent_prediction_id == latest_pred_id,
+            ),
         )
     )
     has_prediction = exists().where(Prediction.document_id == Document.id)
     return select(Document.id).where(
-        Document.project_id == project_id, has_prediction, ~has_saved_none
+        Document.project_id == project_id, has_prediction, ~covered_by_annotation
     )
 
 
@@ -95,7 +112,7 @@ async def recompute_project_score(
     # 4. counterexample regression
     ce_rows = (
         await session.execute(
-            select(Annotation, Document.id)
+            select(Annotation)
             .join(Document, Document.id == Annotation.document_id)
             .where(
                 Document.project_id == project_id,
@@ -103,13 +120,13 @@ async def recompute_project_score(
                 Annotation.status == AnnotationStatus.SAVED.value,
             )
         )
-    ).all()
+    ).scalars().all()
     ce_score: float | None
     if not ce_rows:
         ce_score = None
         ce_component_for_return = 1.0
     else:
-        items = [{"document_id": d_id, "expected": ann.output} for ann, d_id in ce_rows]
+        items = [{"document_id": ann.document_id, "expected": ann.output} for ann in ce_rows]
         ce_score = await counterexample_regression_score(counterexamples=items, rerun=rerun)
         ce_component_for_return = ce_score
 

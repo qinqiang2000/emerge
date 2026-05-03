@@ -114,3 +114,57 @@ async def test_recompute_score_with_one_judge_up_and_no_counterexamples(db_sessi
     # judge says up, human not seen, calibrated 0.8 (prior) → judge_component = 0.8
     # ce empty → ce contributes 1.0; total = 0.7*0.8 + 0.3*1.0 = 0.86
     assert result.score == pytest.approx(0.7 * 0.8 + 0.3 * 1.0, abs=1e-3)
+
+
+@pytest.mark.asyncio
+async def test_vibe_check_re_includes_doc_after_re_extraction(db_session):
+    """Spec §4.1: a doc whose old saved annotation pre-dates a newly generated
+    Prediction (e.g. after schema update) re-enters the vibe-check set, because
+    the latest Prediction is not covered by a *later* Annotation.
+    """
+    uid, pid, docs = await _setup_with_two_docs(db_session)
+    did = docs[0]
+    p1 = Prediction(
+        document_id=did,
+        project_version_id=None,
+        model_id="m",
+        prompt_hash="h",
+        output=[{"a": 1}],
+        per_field_confidence={"0": {"a": "up"}},
+        status=PredictionStatus.SUCCESS.value,
+    )
+    db_session.add(p1)
+    await db_session.flush()
+    db_session.add(
+        Annotation(
+            document_id=did,
+            parent_prediction_id=p1.id,
+            output=[{"a": 1}],
+            role=AnnotationRole.NONE.value,
+            status=AnnotationStatus.SAVED.value,
+            created_by=uid,
+            last_modified_by=uid,
+        )
+    )
+    await db_session.commit()
+    before = (
+        await db_session.execute(vibe_check_predictions_query(pid))
+    ).scalars().all()
+    assert did not in before
+
+    db_session.add(
+        Prediction(
+            document_id=did,
+            project_version_id=None,
+            model_id="m",
+            prompt_hash="h2",
+            output=[{"a": 2}],
+            per_field_confidence={"0": {"a": "up"}},
+            status=PredictionStatus.SUCCESS.value,
+        )
+    )
+    await db_session.commit()
+    after = (
+        await db_session.execute(vibe_check_predictions_query(pid))
+    ).scalars().all()
+    assert did in after
