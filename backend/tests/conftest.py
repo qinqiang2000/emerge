@@ -31,6 +31,9 @@ async def db_engine():
 async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
     factory = async_sessionmaker(db_engine, expire_on_commit=False)
     async with factory() as session:
+        from app.services.builtin_templates import seed_builtin_templates
+
+        await seed_builtin_templates(session)
         yield session
 
 
