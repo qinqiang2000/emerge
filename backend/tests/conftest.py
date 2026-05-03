@@ -40,6 +40,8 @@ async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
 @pytest_asyncio.fixture
 async def app(db_session, db_engine):
     import app.db as db_module
+    from app.engine.providers import get_provider_dep
+    from app.engine.providers.fake import FakeProvider
 
     application = create_app()
 
@@ -47,6 +49,9 @@ async def app(db_session, db_engine):
         yield db_session
 
     application.dependency_overrides[get_session] = _override_session
+    # Default to FakeProvider so tests that don't exercise extraction don't need
+    # a real API key.  Tests that need specific canned outputs override this again.
+    application.dependency_overrides[get_provider_dep] = lambda: FakeProvider(canned=[])
 
     # Also swap SessionFactory so background tasks (extraction) hit the test's engine
     original_factory = db_module.SessionFactory
