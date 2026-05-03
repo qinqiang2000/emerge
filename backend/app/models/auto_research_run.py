@@ -21,7 +21,6 @@ class TerminationReason(str, Enum):
     NO_IMPROVEMENT = "no_improvement"
     MANUAL_STOP = "manual_stop"
     ERROR = "error"
-    NOT_TERMINATED = "not_terminated"
 
 
 class AutoResearchRun(Base, TimestampMixin):
