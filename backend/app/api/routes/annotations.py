@@ -10,8 +10,8 @@ from app.models.annotation import Annotation, AnnotationStatus
 from app.models.document import Document
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.annotation import AnnotationIn, AnnotationOut
-from app.services.corrections import save_correction
+from app.schemas.annotation import AnnotationIn, AnnotationOut, FeedbackIn
+from app.services.corrections import PredictionScopeError, save_correction, save_counterexample
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["annotations"])
 
@@ -168,3 +168,32 @@ async def list_counterexamples(
         )
     ).scalars().all()
     return [AnnotationOut.model_validate(a) for a in rows]
+
+
+@router.post(
+    "/counterexamples",
+    response_model=AnnotationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_counterexample(
+    project_id: int,
+    payload: FeedbackIn,
+    user: User = Depends(current_user),
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+):
+    await _project_or_404(session, project_id, workspace_id)
+    try:
+        ann = await save_counterexample(
+            session=session,
+            project_id=project_id,
+            prediction_id=payload.request_id,
+            correct_output=payload.correct_output,
+            user_id=user.id,
+            notes=payload.notes,
+        )
+    except PredictionScopeError as e:
+        raise EmergeError(
+            ErrorCode.VALIDATION_FAILED, status_code=422, message_override=str(e)
+        ) from e
+    return ann
