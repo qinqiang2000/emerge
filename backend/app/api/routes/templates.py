@@ -2,10 +2,9 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import current_user, current_workspace_id
+from app.core.deps import _project_or_404, current_user, current_workspace_id
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
-from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.template import Template
 from app.models.user import User
@@ -60,15 +59,7 @@ async def save_as_template(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> TemplateOut:
-    project = (
-        await session.execute(
-            select(Project).where(
-                Project.id == project_id, Project.workspace_id == workspace_id
-            )
-        )
-    ).scalar_one_or_none()
-    if project is None:
-        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
+    project = await _project_or_404(session, project_id, workspace_id)
     if project.active_version_id is None:
         raise EmergeError(ErrorCode.CONFLICT, status_code=409)
     v = (

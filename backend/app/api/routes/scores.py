@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import current_workspace_id
+from app.core.deps import _project_or_404, current_workspace_id
 from app.db import get_session
 from app.engine.recompute import (
     DEFAULT_JUDGE_MODEL_VERSION,
@@ -17,11 +17,9 @@ from app.engine.score import (
     precision_point_estimate,
 )
 from app.engine.judge import JudgeProvider, get_judge_provider, run_judge
-from app.errors import EmergeError, ErrorCode
 from app.models.document import Document
 from app.models.judge_calibration import JudgeCalibration
 from app.models.prediction import Prediction
-from app.models.project import Project
 from app.schemas.score import (
     CalibrationOut,
     JudgeRunOut,
@@ -32,18 +30,6 @@ from app.schemas.score import (
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["scores"])
 
-
-async def _project_or_404(session, project_id, workspace_id):
-    p = (
-        await session.execute(
-            select(Project).where(
-                Project.id == project_id, Project.workspace_id == workspace_id
-            )
-        )
-    ).scalar_one_or_none()
-    if p is None:
-        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
-    return p
 
 
 @router.get("/score", response_model=ProjectScoreOut)

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_access_token
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
+from app.models.project import Project
 from app.models.user import User
 from app.models.workspace import WorkspaceMembership
 
@@ -44,3 +45,18 @@ async def current_workspace_id(
     if not rows:
         raise EmergeError(ErrorCode.FORBIDDEN, status_code=403)
     return rows[0]
+
+
+async def _project_or_404(
+    session: AsyncSession, project_id: int, workspace_id: int
+) -> Project:
+    p = (
+        await session.execute(
+            select(Project).where(
+                Project.id == project_id, Project.workspace_id == workspace_id
+            )
+        )
+    ).scalar_one_or_none()
+    if p is None:
+        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
+    return p

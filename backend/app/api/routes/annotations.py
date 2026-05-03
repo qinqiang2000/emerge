@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import current_user, current_workspace_id
+from app.core.deps import _project_or_404, current_user, current_workspace_id
 from app.db import get_session
 from app.engine.recompute import DEFAULT_JUDGE_MODEL_VERSION, record_human_verdict_pair
 from app.engine.score import JudgeVerdict
@@ -10,25 +10,12 @@ from app.errors import EmergeError, ErrorCode
 from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.document import Document
 from app.models.prediction import Prediction
-from app.models.project import Project
 from app.models.user import User
 from app.schemas.annotation import AnnotationIn, AnnotationOut, AnnotationPatchIn, FeedbackIn
 from app.services.corrections import PredictionScopeError, save_correction, save_counterexample
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["annotations"])
 
-
-async def _project_or_404(session, project_id, workspace_id) -> Project:
-    p = (
-        await session.execute(
-            select(Project).where(
-                Project.id == project_id, Project.workspace_id == workspace_id
-            )
-        )
-    ).scalar_one_or_none()
-    if p is None:
-        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
-    return p
 
 
 async def _document_in_project(session, project_id, document_id) -> Document:

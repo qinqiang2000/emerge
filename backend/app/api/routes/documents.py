@@ -2,31 +2,18 @@ from fastapi import APIRouter, Depends, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import current_user, current_workspace_id
+from app.core.deps import _project_or_404, current_user, current_workspace_id
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
 from app.models.annotation import Annotation, AnnotationStatus
 from app.models.document import Document
 from app.models.prediction import Prediction
-from app.models.project import Project
 from app.models.user import User
 from app.schemas.document import DocumentDetailOut, DocumentOut
 from app.services.storage import save_upload
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["documents"])
 
-
-async def _project_or_404(session: AsyncSession, project_id: int, workspace_id: int) -> Project:
-    p = (
-        await session.execute(
-            select(Project).where(
-                Project.id == project_id, Project.workspace_id == workspace_id
-            )
-        )
-    ).scalar_one_or_none()
-    if p is None:
-        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
-    return p
 
 
 @router.post("", response_model=list[DocumentOut], status_code=status.HTTP_201_CREATED)

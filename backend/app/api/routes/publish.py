@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import current_user, current_workspace_id
+from app.core.deps import _project_or_404, current_user, current_workspace_id
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
 from app.models.api_key import ApiKey
@@ -18,21 +18,6 @@ from app.services.api_key import generate_api_key
 router = APIRouter(prefix="/projects/{project_id}", tags=["publish"])
 
 
-async def _project_in_workspace(
-    session: AsyncSession, project_id: int, workspace_id: int
-) -> Project:
-    p = (
-        await session.execute(
-            select(Project).where(
-                Project.id == project_id, Project.workspace_id == workspace_id
-            )
-        )
-    ).scalar_one_or_none()
-    if p is None:
-        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
-    return p
-
-
 @router.post("/publish", response_model=ProjectOut)
 async def publish(
     project_id: int,
@@ -40,7 +25,7 @@ async def publish(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> ProjectOut:
-    p = await _project_in_workspace(session, project_id, workspace_id)
+    p = await _project_or_404(session, project_id, workspace_id)
     if p.active_version_id is None:
         raise EmergeError(
             ErrorCode.CONFLICT,
@@ -91,7 +76,7 @@ async def unpublish(
     same code can be re-published later; spec §7.2 returns 403 to callers in
     the meantime (vs 404 for unknown codes).
     """
-    p = await _project_in_workspace(session, project_id, workspace_id)
+    p = await _project_or_404(session, project_id, workspace_id)
     p.api_published_at = None
     await session.commit()
     await session.refresh(p)
@@ -108,7 +93,7 @@ async def create_api_key(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> ApiKeyOnceOut:
-    await _project_in_workspace(session, project_id, workspace_id)
+    await _project_or_404(session, project_id, workspace_id)
     full, prefix, hashed = generate_api_key()
     row = ApiKey(
         project_id=project_id,
@@ -129,7 +114,7 @@ async def list_api_keys(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> list[ApiKeyOut]:
-    await _project_in_workspace(session, project_id, workspace_id)
+    await _project_or_404(session, project_id, workspace_id)
     rows = (
         await session.execute(
             select(ApiKey)
@@ -147,7 +132,7 @@ async def revoke_api_key(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> ApiKeyOut:
-    await _project_in_workspace(session, project_id, workspace_id)
+    await _project_or_404(session, project_id, workspace_id)
     row = (
         await session.execute(
             select(ApiKey).where(
