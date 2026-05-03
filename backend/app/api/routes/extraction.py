@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_workspace_id
-from app.db import SessionFactory, get_session
+import app.db as db_module
+from app.db import get_session
 from app.engine.extract import extract_document
 from app.engine.provider import Provider
 from app.engine.providers import get_provider_dep
@@ -46,7 +47,7 @@ async def batch_extract(
     ).scalars().all()
 
     async def _run_one(doc_id: int) -> tuple[int, str, str | None]:
-        async with SessionFactory() as own_session:
+        async with db_module.SessionFactory() as own_session:
             try:
                 pred = await extract_document(doc_id, session=own_session, provider=provider)
                 return doc_id, pred.status, None

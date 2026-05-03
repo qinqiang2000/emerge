@@ -78,3 +78,30 @@ async def test_get_document_detail(client, tmp_path, monkeypatch):
     assert body["filename"] == "a.pdf"
     assert body["latest_prediction"] is None
     assert body["latest_annotation"] is None
+
+
+@pytest.mark.asyncio
+async def test_document_detail_includes_latest_prediction_after_extract(
+    client, tmp_path, monkeypatch, app
+):
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    h, pid = await _auth_and_project(client)
+    did = (
+        await client.post(
+            f"/api/v1/projects/{pid}/documents",
+            files=[("files", ("a.pdf", io.BytesIO(b"AAA"), "application/pdf"))],
+            headers=h,
+        )
+    ).json()[0]["id"]
+
+    from app.engine.providers import get_provider_dep
+    from app.engine.providers.fake import FakeProvider
+
+    fake = FakeProvider(canned=[[{"any": "thing"}]])
+    app.dependency_overrides[get_provider_dep] = lambda: fake
+    await client.post(f"/api/v1/projects/{pid}/extract", headers=h)
+
+    resp = await client.get(f"/api/v1/projects/{pid}/documents/{did}", headers=h)
+    body = resp.json()
+    assert body["latest_prediction"]["output"] == [{"any": "thing"}]
+    assert body["latest_prediction"]["status"] == "success"

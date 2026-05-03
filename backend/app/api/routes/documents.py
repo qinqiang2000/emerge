@@ -6,6 +6,7 @@ from app.core.deps import current_user, current_workspace_id
 from app.db import get_session
 from app.errors import EmergeError, ErrorCode
 from app.models.document import Document
+from app.models.prediction import Prediction
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.document import DocumentDetailOut, DocumentOut
@@ -89,6 +90,25 @@ async def get_document(
     if d is None:
         raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
     payload = DocumentOut.model_validate(d).model_dump()
-    payload["latest_prediction"] = None  # populated in R3
+    latest = (
+        await session.execute(
+            select(Prediction)
+            .where(Prediction.document_id == d.id)
+            .order_by(Prediction.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    payload["latest_prediction"] = (
+        {
+            "id": latest.id,
+            "output": latest.output,
+            "status": latest.status,
+            "model_id": latest.model_id,
+            "tokens_used": latest.tokens_used,
+            "error_message": latest.error_message,
+        }
+        if latest
+        else None
+    )
     payload["latest_annotation"] = None  # populated in R4
     return DocumentDetailOut(**payload)
