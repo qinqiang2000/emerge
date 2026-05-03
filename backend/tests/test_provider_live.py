@@ -26,3 +26,25 @@ async def test_openai_basic_extract():
     result = await p.extract(req, file_bytes=body, mime_type="image/png")
     assert isinstance(result.output, list)
     assert len(result.output) >= 1
+
+
+@pytest.mark.skipif(not LIVE, reason="live provider tests opt-in")
+@pytest.mark.asyncio
+async def test_gemini_basic_extract():
+    from app.settings import settings
+
+    with open("tests/fixtures/sample_receipt.png", "rb") as fh:
+        body = fh.read()
+    p = get_provider("gemini")
+    req = compose_extraction_prompt(
+        fields=[
+            SchemaField(name="shop_name", type=FieldType.STRING, description="店名"),
+            SchemaField(name="total_amount", type=FieldType.NUMBER, description="金額"),
+        ],
+        global_notes="",
+        model_id=settings.default_model_gemini,
+    )
+    result = await p.extract(req, file_bytes=body, mime_type="image/png")
+    assert isinstance(result.output, list)
+    assert len(result.output) >= 1
+    print(f"\n[gemini live] model={settings.default_model_gemini} output={result.output}")
