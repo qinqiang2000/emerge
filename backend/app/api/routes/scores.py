@@ -24,6 +24,7 @@ from app.models.prediction import Prediction
 from app.models.project import Project
 from app.schemas.score import (
     CalibrationOut,
+    JudgeRunOut,
     ProjectScoreOut,
     ReviewItemOut,
     ReviewQueueOut,
@@ -136,7 +137,7 @@ async def get_review_queue(
     return ReviewQueueOut(required_review=required, spot_check=spot_check, all=all_items)
 
 
-@router.post("/judge")
+@router.post("/judge", response_model=JudgeRunOut)
 async def trigger_judge(
     project_id: int,
     workspace_id: int = Depends(current_workspace_id),
@@ -147,7 +148,9 @@ async def trigger_judge(
     doc_ids = (
         await session.execute(vibe_check_predictions_query(project_id))
     ).scalars().all()
+    # Serial commits per run_judge are acceptable: vibe-check is capped at 50 per spec §4.1.
     judged: list[int] = []
+    failed: list[int] = []
     for did in doc_ids:
         pred = (
             await session.execute(
@@ -157,6 +160,11 @@ async def trigger_judge(
                 .limit(1)
             )
         ).scalar_one()
-        await run_judge(pred.id, session=session, judge=judge)
-        judged.append(pred.id)
-    return {"judged_predictions": judged}
+        # run_judge swallows provider errors and writes per_field_confidence={}; treat
+        # an empty result as failed so callers can distinguish from a real verdict.
+        updated = await run_judge(pred.id, session=session, judge=judge)
+        if updated.per_field_confidence:
+            judged.append(pred.id)
+        else:
+            failed.append(pred.id)
+    return JudgeRunOut(judged_predictions=judged, failed_predictions=failed)

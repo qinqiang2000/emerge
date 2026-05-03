@@ -30,3 +30,8 @@ class ReviewQueueOut(BaseModel):
     required_review: list[ReviewItemOut]
     spot_check: list[ReviewItemOut]
     all: list[ReviewItemOut]
+
+
+class JudgeRunOut(BaseModel):
+    judged_predictions: list[int]
+    failed_predictions: list[int]
