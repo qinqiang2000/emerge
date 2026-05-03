@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_workspace_id
 from app.db import get_session
-from app.engine.recompute import recompute_project_score, vibe_check_predictions_query
+from app.engine.recompute import (
+    DEFAULT_JUDGE_MODEL_VERSION,
+    recompute_project_score,
+    vibe_check_predictions_query,
+)
 from app.engine.score import (
     beta_posterior,
     precision_ci_95,
@@ -40,11 +44,6 @@ async def _project_or_404(session, project_id, workspace_id):
     return p
 
 
-async def _empty_rerun(_doc_id):
-    # placeholder: production wiring will pass the active Provider; tests override via dependency_overrides if needed
-    return []
-
-
 @router.get("/score", response_model=ProjectScoreOut)
 async def get_score(
     project_id: int,
@@ -52,8 +51,10 @@ async def get_score(
     session: AsyncSession = Depends(get_session),
 ):
     await _project_or_404(session, project_id, workspace_id)
+    # rerun=None until the live extraction provider is plumbed (R6/R7); the
+    # orchestrator falls back to ce_component=1.0 in that case per spec §4.1.
     result = await recompute_project_score(
-        project_id=project_id, session=session, rerun=_empty_rerun
+        project_id=project_id, session=session, rerun=None
     )
     return ProjectScoreOut(
         score=result.score,
@@ -73,7 +74,10 @@ async def get_calibration(
     await _project_or_404(session, project_id, workspace_id)
     cal = (
         await session.execute(
-            select(JudgeCalibration).where(JudgeCalibration.project_id == project_id)
+            select(JudgeCalibration).where(
+                JudgeCalibration.project_id == project_id,
+                JudgeCalibration.judge_model_version == DEFAULT_JUDGE_MODEL_VERSION,
+            )
         )
     ).scalar_one_or_none()
     tp, fp, fn, tn = (cal.tp, cal.fp, cal.fn, cal.tn) if cal else (0, 0, 0, 0)

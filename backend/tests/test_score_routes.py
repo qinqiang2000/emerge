@@ -67,3 +67,84 @@ async def test_review_queue_three_buckets(client, db_session, tmp_path, monkeypa
     # spot_check is sampled (default 2 from the up-only set, but here we have 1)
     assert len(body["spot_check"]) <= 2
     assert {d["id"] for d in body["all"]} >= {d["id"] for d in body["required_review"]}
+
+
+@pytest.mark.asyncio
+async def test_get_score_with_unwired_rerun_treats_ce_pool_as_perfect(
+    client, db_session, tmp_path, monkeypatch
+):
+    """When rerun is None (production wiring not yet in /score), a non-empty CE
+    pool must NOT collapse the score to 0.7*judge — ce_component falls back to
+    1.0 per spec §4.1 (empty-pool semantics).
+    """
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    h, pid = await _auth_and_project(client)
+    did = (
+        await client.post(
+            f"/api/v1/projects/{pid}/documents",
+            files=[("files", ("a.pdf", io.BytesIO(b"X"), "application/pdf"))],
+            headers=h,
+        )
+    ).json()[0]["id"]
+
+    from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
+    from app.models.prediction import Prediction, PredictionStatus
+    from app.models.user import User
+    from sqlalchemy import select as _select
+
+    pred = Prediction(
+        document_id=did,
+        model_id="m",
+        prompt_hash="h",
+        output=[{"a": 1}],
+        per_field_confidence={},
+        status=PredictionStatus.SUCCESS.value,
+    )
+    db_session.add(pred)
+    await db_session.commit()
+    user = (await db_session.execute(_select(User))).scalar_one()
+    db_session.add(
+        Annotation(
+            document_id=did,
+            parent_prediction_id=pred.id,
+            output=[{"a": 1}],
+            role=AnnotationRole.COUNTEREXAMPLE.value,
+            status=AnnotationStatus.SAVED.value,
+            created_by=user.id,
+            last_modified_by=user.id,
+        )
+    )
+    await db_session.commit()
+
+    body = (await client.get(f"/api/v1/projects/{pid}/score", headers=h)).json()
+    assert body["ce_component"] == 1.0
+    assert body["score"] == 1.0  # judge_component also 1.0 (no vibe-check pairs)
+
+
+@pytest.mark.asyncio
+async def test_get_calibration_filters_by_default_judge_model(client, db_session):
+    """A project with calibration rows for two different judge_model_versions must
+    not blow up `/calibration`; the endpoint reads only the active/default model.
+    """
+    h, pid = await _auth_and_project(client)
+    from app.engine.recompute import DEFAULT_JUDGE_MODEL_VERSION
+    from app.models.judge_calibration import JudgeCalibration
+
+    db_session.add(
+        JudgeCalibration(
+            project_id=pid,
+            judge_model_version=DEFAULT_JUDGE_MODEL_VERSION,
+            tp=3,
+            fp=1,
+        )
+    )
+    db_session.add(
+        JudgeCalibration(
+            project_id=pid, judge_model_version="some-old-judge", tp=99, fp=99
+        )
+    )
+    await db_session.commit()
+
+    body = (await client.get(f"/api/v1/projects/{pid}/calibration", headers=h)).json()
+    assert body["tp"] == 3
+    assert body["fp"] == 1

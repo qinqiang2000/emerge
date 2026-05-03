@@ -69,9 +69,14 @@ async def recompute_project_score(
     *,
     project_id: int,
     session: AsyncSession,
-    rerun: Callable[[int], Awaitable[list[dict]]],
+    rerun: Callable[[int], Awaitable[list[dict]]] | None,
     judge_model_version: str = DEFAULT_JUDGE_MODEL_VERSION,
 ) -> ProjectScoreResult:
+    """`rerun=None` means the live extraction provider is not wired in this call site
+    (e.g. the public /score endpoint until R6/R7 plumb the production Provider). In that
+    case CE regression is skipped and ce_score=None per spec §4.1 fallback (empty pool
+    treated as 1.0). Pass a real callable from contexts that can re-run extraction.
+    """
     # 1. find vibe-check docs and their latest predictions
     doc_ids = (
         await session.execute(vibe_check_predictions_query(project_id))
@@ -124,7 +129,7 @@ async def recompute_project_score(
         )
     ).scalars().all()
     ce_score: float | None
-    if not ce_rows:
+    if not ce_rows or rerun is None:
         ce_score = None
         ce_component_for_return = 1.0
     else:
