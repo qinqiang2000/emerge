@@ -84,7 +84,8 @@ async def test_extract_unknown_api_code_404(client):
         files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
         headers={"X-Api-Key": "ek_DEADBEEF-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
     )
-    assert resp.status_code in (401, 404)
+    # Resolve runs before auth — unknown api_code is always 404, never 401.
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
