@@ -147,7 +147,11 @@ async def revoke_api_key(
     await _project_in_workspace(session, project_id, workspace_id)
     row = (
         await session.execute(
-            select(ApiKey).where(ApiKey.id == key_id, ApiKey.project_id == project_id)
+            select(ApiKey).where(
+                ApiKey.id == key_id,
+                ApiKey.project_id == project_id,
+                ApiKey.deleted_at.is_(None),
+            )
         )
     ).scalar_one_or_none()
     if row is None:

@@ -102,6 +102,9 @@ async def test_revoke_api_key_soft_deletes(client, db_session):
     assert resp.status_code == 200
     listing = (await client.get(f"/api/v1/projects/{pid}/api-keys", headers=h)).json()
     assert listing == []
+    # Second DELETE: soft-deleted resource is gone, must 404 not 200.
+    second = await client.delete(f"/api/v1/projects/{pid}/api-keys/{kid}", headers=h)
+    assert second.status_code == 404
 
 
 @pytest.mark.asyncio
