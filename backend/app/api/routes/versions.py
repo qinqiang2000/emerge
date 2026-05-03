@@ -142,3 +142,43 @@ async def unlock(
     await session.commit()
     await session.refresh(v)
     return v
+
+
+@router.post("/versions/{version_id}/activate", response_model=ProjectVersionOut)
+async def activate_version(
+    project_id: int,
+    version_id: int,
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+):
+    p = await _get_project(session, project_id, workspace_id)
+    v = (
+        await session.execute(
+            select(ProjectVersion).where(
+                ProjectVersion.id == version_id, ProjectVersion.project_id == project_id
+            )
+        )
+    ).scalar_one_or_none()
+    if v is None:
+        raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
+    p.active_version_id = v.id
+    await session.commit()
+    await session.refresh(v)
+    return ProjectVersionOut.model_validate(v)
+
+
+@router.get("/versions", response_model=list[ProjectVersionOut])
+async def list_versions(
+    project_id: int,
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+):
+    await _get_project(session, project_id, workspace_id)
+    rows = (
+        await session.execute(
+            select(ProjectVersion)
+            .where(ProjectVersion.project_id == project_id)
+            .order_by(ProjectVersion.version_number.desc())
+        )
+    ).scalars().all()
+    return [ProjectVersionOut.model_validate(r) for r in rows]

@@ -59,3 +59,51 @@ async def test_patch_schema_validates_field_shape(client):
     }
     resp = await client.patch(f"/api/v1/projects/{pid}/schema", json=bad, headers=h)
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_activate_version_changes_active_pointer(client, db_session):
+    h, pid = await _auth_and_project(client, email="vp4@vp.com")
+    # patch creates a v1
+    body = (
+        await client.patch(
+            f"/api/v1/projects/{pid}/schema",
+            json={"schema": [], "global_notes": "", "model_id": "x"},
+            headers=h,
+        )
+    ).json()
+    v1_id = body["id"]
+    # patch again -> v2 (active becomes v2)
+    body2 = (
+        await client.patch(
+            f"/api/v1/projects/{pid}/schema",
+            json={"schema": [], "global_notes": "", "model_id": "y"},
+            headers=h,
+        )
+    ).json()
+    v2_id = body2["id"]
+    assert v2_id != v1_id
+
+    # activate v1
+    resp = await client.post(
+        f"/api/v1/projects/{pid}/versions/{v1_id}/activate", headers=h
+    )
+    assert resp.status_code == 200
+    active = (
+        await client.get(f"/api/v1/projects/{pid}/versions/active", headers=h)
+    ).json()
+    assert active["id"] == v1_id
+
+
+@pytest.mark.asyncio
+async def test_list_versions_returns_descending(client):
+    h, pid = await _auth_and_project(client, email="vp5@vp.com")
+    for _ in range(2):
+        await client.patch(
+            f"/api/v1/projects/{pid}/schema",
+            json={"schema": [], "global_notes": "", "model_id": "x"},
+            headers=h,
+        )
+    resp = await client.get(f"/api/v1/projects/{pid}/versions", headers=h)
+    rows = resp.json()
+    assert [r["version_number"] for r in rows] == [2, 1, 0]
