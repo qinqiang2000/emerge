@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, UploadFile
+from fastapi import APIRouter, Depends, Header, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from app.engine.extract import extract_document
 from app.engine.provider import Provider
 from app.engine.providers import get_provider_dep
 from app.errors import EmergeError, ErrorCode
+from app.services.ratelimit import _extract_limit, limiter
 from app.models.api_key import ApiKey
 from app.models.document import Document, DocumentStatus
 from app.models.project import Project
@@ -63,7 +64,9 @@ async def _authenticate_key(
 
 
 @router.post("/extract/{api_code}")
+@limiter.limit(_extract_limit)
 async def public_extract(
+    request: Request,
     api_code: str,
     file: UploadFile,
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
@@ -98,7 +101,9 @@ async def public_extract(
 
 
 @router.post("/extract/{api_code}/feedback")
+@limiter.limit(_extract_limit)
 async def public_feedback(
+    request: Request,
     api_code: str,
     payload: FeedbackIn,
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),

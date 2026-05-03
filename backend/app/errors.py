@@ -12,6 +12,7 @@ class ErrorCode(str, Enum):
     VALIDATION_FAILED = "VALIDATION_FAILED"
     CONFLICT = "CONFLICT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 _MESSAGES: dict[ErrorCode, str] = {
@@ -21,6 +22,7 @@ _MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.VALIDATION_FAILED: "Request validation failed.",
     ErrorCode.CONFLICT: "Resource state conflict.",
     ErrorCode.INTERNAL_ERROR: "An internal error occurred.",
+    ErrorCode.RATE_LIMITED: "Too many requests. Slow down and try again.",
 }
 
 

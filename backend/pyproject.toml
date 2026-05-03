@@ -24,6 +24,7 @@ dependencies = [
     "google-genai>=0.3.0",
     "PyPDF2>=3.0.0",
     "scipy>=1.13.0",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
