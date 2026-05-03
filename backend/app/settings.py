@@ -14,5 +14,11 @@ class Settings(BaseSettings):
 
     storage_root: str = "./data/uploads"
 
+    openai_api_key: str | None = None
+    google_api_key: str | None = None
+    default_provider: str = "openai"  # 'openai' | 'gemini'
+    default_model_openai: str = "gpt-4o-2024-08-06"
+    default_model_gemini: str = "gemini-2.0-flash"
+
 
 settings = Settings()
