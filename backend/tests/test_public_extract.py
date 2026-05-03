@@ -88,7 +88,8 @@ async def test_extract_unknown_api_code_404(client):
 
 
 @pytest.mark.asyncio
-async def test_extract_after_unpublish_returns_404(client, db_session, monkeypatch, tmp_path):
+async def test_extract_after_unpublish_returns_403(client, db_session, monkeypatch, tmp_path):
+    """Spec §7.2: unpublish → 403 (paused), distinct from 404 (unknown api_code)."""
     api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
     tok = (
         await client.post(
@@ -109,7 +110,7 @@ async def test_extract_after_unpublish_returns_404(client, db_session, monkeypat
         files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
         headers={"X-Api-Key": key},
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 403
 
 
 @pytest.mark.asyncio

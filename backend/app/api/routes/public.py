@@ -19,16 +19,19 @@ router = APIRouter(tags=["public"])
 
 
 async def _resolve_project(session: AsyncSession, api_code: str) -> Project:
-    """Live read per spec §7.2 — never cache, never version-pin."""
+    """Live read per spec §7.2 — never cache, never version-pin.
+
+    Spec §7 distinguishes 404 (unknown api_code) from 403 (known but unpublished).
+    """
     p = (
         await session.execute(
-            select(Project).where(
-                Project.api_code == api_code, Project.api_published_at.is_not(None)
-            )
+            select(Project).where(Project.api_code == api_code)
         )
     ).scalar_one_or_none()
     if p is None:
         raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
+    if p.api_published_at is None:
+        raise EmergeError(ErrorCode.FORBIDDEN, status_code=403)
     return p
 
 

@@ -56,9 +56,10 @@ async def test_publish_succeeds_after_lock(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_unpublish_clears_api_code(client, db_session):
+async def test_unpublish_keeps_api_code_clears_published_at(client, db_session):
+    """Unpublish pauses the API but keeps the api_code claimed in the workspace.
+    Spec §7.2: this lets the public route distinguish 403 (paused) from 404 (unknown)."""
     h, pid = await _auth_and_project(client, "up@up.com")
-    # publish via direct DB to avoid setting up lock state again
     from app.models.project import Project
     from sqlalchemy import select
     proj = (await db_session.execute(select(Project).where(Project.id == pid))).scalar_one()
@@ -69,8 +70,9 @@ async def test_unpublish_clears_api_code(client, db_session):
 
     resp = await client.post(f"/api/v1/projects/{pid}/unpublish", headers=h)
     assert resp.status_code == 200
-    assert resp.json()["api_code"] is None
-    assert resp.json()["api_published_at"] is None
+    body = resp.json()
+    assert body["api_code"] == "to-unpub"
+    assert body["api_published_at"] is None
 
 
 @pytest.mark.asyncio

@@ -87,8 +87,11 @@ async def unpublish(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> ProjectOut:
+    """Pause the public API for this project. The api_code stays bound so the
+    same code can be re-published later; spec §7.2 returns 403 to callers in
+    the meantime (vs 404 for unknown codes).
+    """
     p = await _project_in_workspace(session, project_id, workspace_id)
-    p.api_code = None
     p.api_published_at = None
     await session.commit()
     await session.refresh(p)
