@@ -1,6 +1,7 @@
 import io
 
 import pytest
+from sqlalchemy import select
 
 
 async def _auth_and_project(client) -> tuple[dict, int]:
@@ -148,3 +149,50 @@ async def test_get_calibration_filters_by_default_judge_model(client, db_session
     body = (await client.get(f"/api/v1/projects/{pid}/calibration", headers=h)).json()
     assert body["tp"] == 3
     assert body["fp"] == 1
+
+
+@pytest.mark.asyncio
+async def test_trigger_judge_writes_per_field_confidence(
+    client, db_session, tmp_path, monkeypatch, app
+):
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    h, pid = await _auth_and_project(client)
+    fp = tmp_path / "x.pdf"
+    fp.write_bytes(b"X")
+    files = [("files", ("a.pdf", io.BytesIO(b"X"), "application/pdf"))]
+    did = (
+        await client.post(f"/api/v1/projects/{pid}/documents", files=files, headers=h)
+    ).json()[0]["id"]
+
+    from app.models.document import Document as D
+    from app.models.prediction import Prediction, PredictionStatus
+    from app.models.project_version import ProjectVersion
+
+    d = (await db_session.execute(select(D).where(D.id == did))).scalar_one()
+    d.file_path = str(fp)
+    version = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.project_id == pid)
+        )
+    ).scalar_one()
+    pred = Prediction(
+        document_id=did,
+        project_version_id=version.id,
+        model_id="m",
+        prompt_hash="h",
+        output=[{"a": 1}],
+        per_field_confidence={},
+        status=PredictionStatus.SUCCESS.value,
+    )
+    db_session.add(pred)
+    await db_session.commit()
+
+    from app.engine.judge import FakeJudgeProvider, get_judge_provider
+
+    fake = FakeJudgeProvider(canned=[{"0": {"a": "up"}}])
+    app.dependency_overrides[get_judge_provider] = lambda: fake
+
+    resp = await client.post(f"/api/v1/projects/{pid}/judge", headers=h)
+    assert resp.status_code == 200
+    await db_session.refresh(pred)
+    assert pred.per_field_confidence == {"0": {"a": "up"}}

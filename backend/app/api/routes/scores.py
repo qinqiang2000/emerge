@@ -16,6 +16,7 @@ from app.engine.score import (
     precision_ci_95,
     precision_point_estimate,
 )
+from app.engine.judge import JudgeProvider, get_judge_provider, run_judge
 from app.errors import EmergeError, ErrorCode
 from app.models.document import Document
 from app.models.judge_calibration import JudgeCalibration
@@ -133,3 +134,29 @@ async def get_review_queue(
     rng = random.Random(project_id)  # deterministic per project
     spot_check = rng.sample(up_only, k=min(2, len(up_only)))
     return ReviewQueueOut(required_review=required, spot_check=spot_check, all=all_items)
+
+
+@router.post("/judge")
+async def trigger_judge(
+    project_id: int,
+    workspace_id: int = Depends(current_workspace_id),
+    judge: JudgeProvider = Depends(get_judge_provider),
+    session: AsyncSession = Depends(get_session),
+):
+    await _project_or_404(session, project_id, workspace_id)
+    doc_ids = (
+        await session.execute(vibe_check_predictions_query(project_id))
+    ).scalars().all()
+    judged: list[int] = []
+    for did in doc_ids:
+        pred = (
+            await session.execute(
+                select(Prediction)
+                .where(Prediction.document_id == did)
+                .order_by(Prediction.id.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+        await run_judge(pred.id, session=session, judge=judge)
+        judged.append(pred.id)
+    return {"judged_predictions": judged}

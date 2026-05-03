@@ -55,6 +55,14 @@ class FakeJudgeProvider:
         return nxt
 
 
+def get_judge_provider() -> JudgeProvider:
+    """FastAPI dep. Default raises — production wiring (gemini-3.1-pro-preview-backed
+    JudgeProvider) lands with R6's `default_model_pro` settings split per CLAUDE.md.
+    Tests substitute via `app.dependency_overrides[get_judge_provider] = lambda: fake`.
+    """
+    raise NotImplementedError("configure judge provider via dependency_overrides or settings")
+
+
 async def run_judge(
     prediction_id: int,
     *,
