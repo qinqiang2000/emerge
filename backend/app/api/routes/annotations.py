@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,12 +7,12 @@ from app.db import get_session
 from app.engine.recompute import DEFAULT_JUDGE_MODEL_VERSION, record_human_verdict_pair
 from app.engine.score import JudgeVerdict
 from app.errors import EmergeError, ErrorCode
-from app.models.annotation import Annotation, AnnotationStatus
+from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.document import Document
 from app.models.prediction import Prediction
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.annotation import AnnotationIn, AnnotationOut, FeedbackIn
+from app.schemas.annotation import AnnotationIn, AnnotationOut, AnnotationPatchIn, FeedbackIn
 from app.services.corrections import PredictionScopeError, save_correction, save_counterexample
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["annotations"])
@@ -135,11 +134,6 @@ async def list_annotations(
     return [AnnotationOut.model_validate(a) for a in rows]
 
 
-class AnnotationPatchIn(BaseModel):
-    output: list[dict] | None = None
-    notes: str | None = None
-
-
 @router.patch("/annotations/{annotation_id}", response_model=AnnotationOut)
 async def patch_annotation(
     project_id: int,
@@ -191,7 +185,7 @@ async def list_counterexamples(
             .join(Document, Document.id == Annotation.document_id)
             .where(
                 Document.project_id == project_id,
-                Annotation.role == "counterexample",
+                Annotation.role == AnnotationRole.COUNTEREXAMPLE.value,
                 Annotation.status == AnnotationStatus.SAVED.value,
             )
             .order_by(Annotation.id.desc())

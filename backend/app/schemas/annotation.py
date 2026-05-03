@@ -31,10 +31,16 @@ class AnnotationOut(BaseModel):
     status: str
     notes: str | None
     created_by: int
+    last_modified_by: int | None
     created_at: datetime
     last_modified_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AnnotationPatchIn(BaseModel):
+    output: list[dict] | None = None
+    notes: str | None = None
 
 
 class FeedbackIn(BaseModel):
