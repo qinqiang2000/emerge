@@ -28,6 +28,13 @@ def parse_prefix(presented: str) -> str | None:
 
 
 def verify_api_key(presented: str, *, prefix: str, key_hash: str) -> bool:
+    """Constant-time prefix compare + bcrypt secret check.
+
+    Timing note: a wrong prefix returns in microseconds via compare_digest;
+    a matching prefix triggers bcrypt (~250ms). Callers MUST scope the
+    candidate row set (e.g. by project_id) before calling, and the route
+    layer MUST rate-limit, to bound prefix-enumeration attacks.
+    """
     if not presented.startswith("ek_") or "-" not in presented:
         return False
     pres_prefix, pres_secret = presented.removeprefix("ek_").split("-", 1)
@@ -35,5 +42,5 @@ def verify_api_key(presented: str, *, prefix: str, key_hash: str) -> bool:
         return False
     try:
         return bcrypt.checkpw(pres_secret.encode("utf-8"), key_hash.encode("utf-8"))
-    except (ValueError, KeyError):
+    except ValueError:
         return False
