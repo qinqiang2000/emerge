@@ -18,6 +18,8 @@ from app.models.document import Document
 from app.models.judge_calibration import JudgeCalibration
 from app.models.prediction import Prediction
 
+DEFAULT_JUDGE_MODEL_VERSION = "claude-opus-4-7"
+
 
 def vibe_check_predictions_query(project_id: int) -> Select:
     """Spec §4.1: doc_ids of Documents in project whose latest Prediction is NOT covered
@@ -68,7 +70,7 @@ async def recompute_project_score(
     project_id: int,
     session: AsyncSession,
     rerun: Callable[[int], Awaitable[list[dict]]],
-    judge_model_version: str = "claude-opus-4-7",
+    judge_model_version: str = DEFAULT_JUDGE_MODEL_VERSION,
 ) -> ProjectScoreResult:
     # 1. find vibe-check docs and their latest predictions
     doc_ids = (
@@ -139,3 +141,46 @@ async def recompute_project_score(
         observation_count=len(pairs),
         vibe_check_size=len(doc_ids),
     )
+
+
+async def record_human_verdict_pair(
+    *,
+    session: AsyncSession,
+    project_id: int,
+    judge_model_version: str,
+    judge_verdict: JudgeVerdict,
+    human_fixed: bool,
+) -> JudgeCalibration:
+    """Update calibration counts.
+    - judge=up, human did not fix → tp += 1
+    - judge=up, human fixed → fp += 1
+    - judge=down/uncertain, human fixed → fn += 1
+    - judge=down/uncertain, human did not fix → tn += 1
+    """
+    cal = (
+        await session.execute(
+            select(JudgeCalibration).where(
+                JudgeCalibration.project_id == project_id,
+                JudgeCalibration.judge_model_version == judge_model_version,
+            )
+        )
+    ).scalar_one_or_none()
+    if cal is None:
+        cal = JudgeCalibration(
+            project_id=project_id, judge_model_version=judge_model_version
+        )
+        session.add(cal)
+        await session.flush()
+
+    if judge_verdict is JudgeVerdict.UP and not human_fixed:
+        cal.tp += 1
+    elif judge_verdict is JudgeVerdict.UP and human_fixed:
+        cal.fp += 1
+    elif judge_verdict in (JudgeVerdict.DOWN, JudgeVerdict.UNCERTAIN) and human_fixed:
+        cal.fn += 1
+    else:
+        cal.tn += 1
+    cal.observation_count += 1
+    await session.commit()
+    await session.refresh(cal)
+    return cal

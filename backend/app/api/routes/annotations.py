@@ -5,9 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_user, current_workspace_id
 from app.db import get_session
+from app.engine.recompute import DEFAULT_JUDGE_MODEL_VERSION, record_human_verdict_pair
+from app.engine.score import JudgeVerdict
 from app.errors import EmergeError, ErrorCode
 from app.models.annotation import Annotation, AnnotationStatus
 from app.models.document import Document
+from app.models.prediction import Prediction
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.annotation import AnnotationIn, AnnotationOut, FeedbackIn
@@ -78,6 +81,33 @@ async def create_annotation(
         notes=payload.notes,
         parent_prediction_id=payload.parent_prediction_id,
     )
+    if payload.parent_prediction_id is not None:
+        parent = (
+            await session.execute(
+                select(Prediction).where(Prediction.id == payload.parent_prediction_id)
+            )
+        ).scalar_one_or_none()
+        if parent is not None:
+            for ent_idx_str, field_verdicts in (parent.per_field_confidence or {}).items():
+                try:
+                    ent_idx = int(ent_idx_str)
+                except ValueError:
+                    continue
+                old_entity = parent.output[ent_idx] if ent_idx < len(parent.output) else {}
+                new_entity = payload.output[ent_idx] if ent_idx < len(payload.output) else {}
+                for fname, verdict_str in field_verdicts.items():
+                    try:
+                        j = JudgeVerdict(verdict_str)
+                    except ValueError:
+                        continue
+                    human_fixed = old_entity.get(fname) != new_entity.get(fname)
+                    await record_human_verdict_pair(
+                        session=session,
+                        project_id=project_id,
+                        judge_model_version=DEFAULT_JUDGE_MODEL_VERSION,
+                        judge_verdict=j,
+                        human_fixed=human_fixed,
+                    )
     return ann
 
 
