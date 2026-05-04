@@ -1,0 +1,73 @@
+{
+  "auth": {
+    "login_title": "Sign in to emerge",
+    "register_title": "Create your emerge workspace",
+    "email": "Email",
+    "password": "Password",
+    "submit_login": "Sign in",
+    "submit_register": "Create account"
+  },
+  "projects": {
+    "title": "Your projects",
+    "create_button": "New project",
+    "create_dialog_title": "What kind of document do you want to extract?",
+    "create_dialog_hint": "Describe it in your own words…",
+    "create_browse_templates": "Browse 5 builtin templates",
+    "create_empty_project": "Empty project"
+  },
+  "documents": {
+    "title": "Documents",
+    "upload": "Upload",
+    "extract_remaining": "Re-extract remaining",
+    "extract_selected": "Re-extract selected",
+    "filename": "Filename",
+    "status": "Status",
+    "entity_count": "Entities",
+    "confidence": "Confidence",
+    "annotation": "Annotation",
+    "last_modified": "Last modified"
+  },
+  "studio": {
+    "schema_editor": "Schema editor",
+    "ask_researcher": "Ask researcher",
+    "save_correction": "Save correction"
+  },
+  "schema": {
+    "tab_form": "Form",
+    "tab_chat": "Chat",
+    "lock_status_blocked": "Need at least 2 saved corrections.",
+    "lock_button": "Lock schema",
+    "unlock_button": "Unlock"
+  },
+  "auto_research": {
+    "run": "Run AutoResearch",
+    "running_banner": "AutoResearch is running…",
+    "stop": "Stop",
+    "termination_threshold_met": "Threshold met",
+    "termination_max_turn": "Max turns reached",
+    "termination_no_improvement": "Stopped: no improvement"
+  },
+  "publish": {
+    "publish_button": "Publish API",
+    "key_modal_title": "API key — copy now (shown only once)",
+    "manage_keys": "Manage API keys"
+  },
+  "errors": {
+    "UNAUTHORIZED": "Please sign in.",
+    "FORBIDDEN": "You don't have permission to do that.",
+    "NOT_FOUND": "We couldn't find that.",
+    "CONFLICT": "That conflicts with the current state.",
+    "VALIDATION_FAILED": "Please check the form and try again.",
+    "RATE_LIMITED": "You're moving too fast — try again in a moment.",
+    "INTERNAL_ERROR": "Something went wrong. Please retry."
+  },
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No"
+  }
+}
