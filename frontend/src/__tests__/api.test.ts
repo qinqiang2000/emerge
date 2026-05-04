@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api, EmergeError, setAuthToken } from "@/lib/api";
+import { api, bootAuthFromStorage, EmergeError, setAuthToken } from "@/lib/api";
 
 describe("api client", () => {
   afterEach(() => {
     setAuthToken(null);
+    localStorage.removeItem("emerge.token");
     vi.restoreAllMocks();
   });
 
@@ -16,6 +17,20 @@ describe("api client", () => {
   it("clears Authorization header when null passed", () => {
     setAuthToken("t123");
     setAuthToken(null);
+    expect(api.defaults.headers.common.Authorization).toBeUndefined();
+  });
+
+  it("bootAuthFromStorage attaches Authorization from persisted localStorage token", () => {
+    setAuthToken(null);
+    localStorage.setItem("emerge.token", "stored-token");
+    bootAuthFromStorage();
+    expect(api.defaults.headers.common.Authorization).toBe("Bearer stored-token");
+  });
+
+  it("bootAuthFromStorage is a no-op when no persisted token exists", () => {
+    setAuthToken(null);
+    localStorage.removeItem("emerge.token");
+    bootAuthFromStorage();
     expect(api.defaults.headers.common.Authorization).toBeUndefined();
   });
 

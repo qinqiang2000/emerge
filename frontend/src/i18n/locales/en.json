@@ -49,7 +49,6 @@
     "confidence": "Confidence",
     "annotation": "Annotation",
     "last_modified": "Last modified",
-    "col_pages": "Pages",
     "list_loading": "Loading documents…",
     "list_empty": "No documents yet. Upload a PDF to get started."
   },

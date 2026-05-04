@@ -17,6 +17,18 @@ export function setAuthToken(token: string | null) {
   else delete api.defaults.headers.common.Authorization;
 }
 
+// Boot-prime axios with the persisted JWT before any store / page useEffect
+// fires. Without this, the first request after a hard reload (e.g. /projects/2
+// → store.load()) races useAuth.init() and goes out without Authorization,
+// surfacing a spurious 401 even though the token is valid in localStorage.
+export function bootAuthFromStorage(): void {
+  if (typeof localStorage === "undefined") return;
+  const token = localStorage.getItem("emerge.token");
+  if (token) setAuthToken(token);
+}
+
+bootAuthFromStorage();
+
 api.interceptors.response.use(
   (resp) => resp,
   (err) => {

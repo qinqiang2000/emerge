@@ -92,7 +92,6 @@ export function DocumentListPage() {
             <TR>
               <TH>{t("documents.filename")}</TH>
               <TH>{t("documents.status")}</TH>
-              <TH>{t("documents.col_pages")}</TH>
               <TH>{t("documents.last_modified")}</TH>
             </TR>
           </THead>
@@ -105,7 +104,6 @@ export function DocumentListPage() {
               >
                 <TD className="text-fg-primary">{d.filename}</TD>
                 <TD className="text-fg-muted">{d.status}</TD>
-                <TD className="text-fg-muted">{d.page_count}</TD>
                 <TD className="text-fg-muted">{formatDate(d.created_at)}</TD>
               </TR>
             ))}
