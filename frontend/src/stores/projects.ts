@@ -47,13 +47,23 @@ export type ContractDiff = {
   items: ContractDiffItem[];
 };
 
+export type ProjectVersionMeta = {
+  id: number;
+  project_id: number;
+  version_number: number;
+  locked: boolean;
+};
+
 type ProjectsState = {
   rows: Project[];
   apiKeys: ApiKeyOut[];
   contractDiff: ContractDiff | null;
+  versions: ProjectVersionMeta[];
   loading: boolean;
   error: string | null;
   load: () => Promise<void>;
+  loadOne: (projectId: number) => Promise<void>;
+  loadVersions: (projectId: number) => Promise<void>;
   publish: (
     projectId: number,
     apiCode: string,
@@ -87,6 +97,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   rows: [],
   apiKeys: [],
   contractDiff: null,
+  versions: [],
   loading: false,
   error: null,
 
@@ -97,6 +108,29 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       set({ rows, loading: false });
     } catch (e) {
       set({ loading: false, error: `errors.${emergeCode(e)}` });
+    }
+  },
+
+  async loadOne(projectId) {
+    set({ loading: true, error: null });
+    try {
+      const updated = (await api.get(`/api/v1/projects/${projectId}`))
+        .data as Project;
+      set({ rows: spliceProject(get().rows, updated), loading: false });
+    } catch (e) {
+      set({ loading: false, error: `errors.${emergeCode(e)}` });
+    }
+  },
+
+  async loadVersions(projectId) {
+    set({ error: null });
+    try {
+      const versions = (
+        await api.get(`/api/v1/projects/${projectId}/versions`)
+      ).data as ProjectVersionMeta[];
+      set({ versions });
+    } catch (e) {
+      set({ error: `errors.${emergeCode(e)}` });
     }
   },
 

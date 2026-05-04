@@ -20,13 +20,17 @@ function renderAt(path: string) {
           path="/projects/:id/schema"
           element={<ProjectSubNav projectId={7} />}
         />
+        <Route
+          path="/projects/:id/api-console"
+          element={<ProjectSubNav projectId={7} />}
+        />
       </Routes>
     </MemoryRouter>,
   );
 }
 
 describe("ProjectSubNav", () => {
-  it("renders Documents and Schema links pointing to project routes", () => {
+  it("renders Documents, Schema, and API links pointing to project routes", () => {
     renderAt("/projects/7");
     expect(screen.getByRole("link", { name: /documents/i })).toHaveAttribute(
       "href",
@@ -36,6 +40,23 @@ describe("ProjectSubNav", () => {
       "href",
       "/projects/7/schema",
     );
+    expect(screen.getByRole("link", { name: /^api$/i })).toHaveAttribute(
+      "href",
+      "/projects/7/api-console",
+    );
+  });
+
+  it("marks API as current when on /projects/:id/api-console", () => {
+    renderAt("/projects/7/api-console");
+    expect(
+      screen.getByRole("link", { name: /^api$/i }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      screen.getByRole("link", { name: /documents/i }),
+    ).not.toHaveAttribute("aria-current");
+    expect(
+      screen.getByRole("link", { name: /schema/i }),
+    ).not.toHaveAttribute("aria-current");
   });
 
   it("marks Documents as current when on /projects/:id", () => {

@@ -7,7 +7,8 @@ export function ProjectSubNav({ projectId }: { projectId: number }) {
   const t = useT();
   const { pathname } = useLocation();
   const onSchema = pathname.endsWith(`/projects/${projectId}/schema`);
-  const onDocuments = !onSchema;
+  const onApi = pathname.endsWith(`/projects/${projectId}/api-console`);
+  const onDocuments = !onSchema && !onApi;
 
   return (
     <nav className="border-b border-border-default">
@@ -21,6 +22,11 @@ export function ProjectSubNav({ projectId }: { projectId: number }) {
           to={`/projects/${projectId}/schema`}
           active={onSchema}
           label={t("nav.schema")}
+        />
+        <NavTab
+          to={`/projects/${projectId}/api-console`}
+          active={onApi}
+          label={t("nav.api")}
         />
       </ul>
     </nav>

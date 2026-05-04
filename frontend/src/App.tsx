@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { ThemeToggle } from "./components/ThemeToggle";
+import { ApiConsolePage } from "./pages/ApiConsole";
 import { DocumentListPage } from "./pages/DocumentList";
 import { ProjectCreatePage } from "./pages/ProjectCreate";
 import { ProjectListPage } from "./pages/ProjectList";
@@ -70,6 +71,14 @@ export default function App() {
               element={
                 <AuthGate>
                   <SchemaEditorPage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/api-console"
+              element={
+                <AuthGate>
+                  <ApiConsolePage />
                 </AuthGate>
               }
             />
