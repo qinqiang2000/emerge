@@ -1,8 +1,9 @@
-# emerge — Software 3.0 Document Extraction Platform · Overall Design
+# emerge — Software 3.0 Document API Platform · Overall Design
 
 > **Slogan**: Documents in. APIs emerge. They get better as you correct them.
 > **Status**: v1 design
 > emerge is a clean-slate project; no data migration from any predecessor.
+> v1 implements **ExtractionProject** only; MatchingProject / VerificationProject are future project types in the same application.
 
 ## Glossary
 
@@ -10,7 +11,8 @@
 |---|---|---|
 | **Workspace** | 租户边界，admin 划分。普通用户基本不感知（参考 §8.0）。 | 不是单文档矫正页 |
 | **Studio** | 单文档矫正页（per-document correction view）。用户从 Document 列表点行进入。见 §8.2。 | 不是租户边界、也不是整个项目页 |
-| **Project** | 一个文档类型 + schema + API 的工作单元。属于某 Workspace。 | 不是 doc 集合（doc 是其子资源） |
+| **Project** | 一个 API 工作单元。v1 只有 `project_type=extraction`：一个文档类型 + schema + extract API。未来同一应用内可有 `matching` / `verification`。属于某 Workspace。 | 不是 doc 集合（doc 是其子资源），也不是另一个应用 |
+| **Project Type** | API 的产品形态：`extraction`（v1 实现）、`matching` / `verification`（future）。决定资产类型、Studio UX、public API output contract。 | 不是 Workspace、不是 Template |
 | **Document** | 一份上传的文件（PDF / 图片）。一个 doc 一行 DB 记录。 | 不是 JSON 输出 |
 | **Prediction** | 模型对某 Document 的输出。自动生成。 | 不是人审过的版本 |
 | **Annotation** (DB 表名) | 用户矫正后的完整 JSON。**不**包含 bbox / span 等位置信息（仅借了 label-studio 的表名）。 | 不是 bbox / 区域标注 |
@@ -22,13 +24,13 @@
 
 ## 0. Why this exists
 
-doc-intel was built as "annotation platform that also publishes APIs". In real use, the annotation-first framing turned out to be the wrong shape: users wanted **a structured extraction API**, and the heavy annotation / prompt-engineering / evaluation machinery was overhead, not value.
+doc-intel was built as "annotation platform that also publishes APIs". In real use, the annotation-first framing turned out to be the wrong shape: users wanted **a stable document API**. The first concrete API type is structured extraction; later the same mechanism can support document matching / verification. Heavy annotation / prompt-engineering / evaluation machinery was overhead, not value.
 
 emerge restarts the design from a Karpathy software-3.0 lens:
 
 > **The API is not configured. It emerges from the user's first few corrections, and gets better with every subsequent one.**
 
-The user's labour is concentrated where it cannot be eliminated — judging correctness on a small sampled subset, and writing/refining each field's natural-language description — and is fed back as evidence that the platform uses to evolve schema descriptions and global notes autonomously.
+The user's labour is concentrated where it cannot be eliminated — judging correctness on a small sampled subset, and writing/refining natural-language descriptions. In v1 those are **field descriptions** for extraction; in future project types they become **match rule descriptions** or **policy descriptions**. Corrections feed back as evidence that the platform uses to evolve those descriptions autonomously, with human review before activation.
 
 ---
 
@@ -60,6 +62,32 @@ The user's labour is concentrated where it cannot be eliminated — judging corr
 
 用户的核心创造性劳动是**写每个字段的 `description`**——这才是真正的"代码"。AutoResearch 的核心动作也是改这些 description。
 
+
+### 1.0 Platform scope & Project Types
+
+emerge 的长期产品抽象不是单一“文档抽取工具”，而是 **AI-native Document API Platform**：
+
+```text
+docs + natural-language descriptions + LLM + corrections
+→ stable API
+→ API gets better over time
+```
+
+v1 只实现 `ExtractionProject`。为避免以后把 matching 硬塞进 extraction workflow，v1 数据模型从 day one 预留 `Project.project_type`，但创建接口只接受 `extraction`。
+
+| Project Type | v1? | 核心 description 资产 | Runtime input | API output |
+|---|---:|---|---|---|
+| `extraction` | ✅ | field descriptions + global_notes | 单份 PDF / 图片 | `entities: array<object>` |
+| `matching` | future | match rule descriptions + per-role extraction descriptions | 文档 pair / group（如合同 + 发票 + 付款申请） | `decision` + rule-by-rule `checks` + evidence |
+| `verification` | future | policy descriptions | 一份或多份文档 + policy | `pass/fail/needs_review` + reasons + evidence |
+
+关键边界：
+- **同一个应用，同一套底层机制**：Workspace、Document storage、ProjectVersion、Corrections、Counterexamples、AutoResearch、Readiness、API Publish、Feedback 可复用。
+- **不同 Project Type，不同 UX / output contract**：MatchingProject 未来会有 Case、DocumentRole、MatchRule、rule verdict Studio；不复用 Extraction Studio 的 entity field editor。
+- **v1 不实现 matching / verification**：只保留 discriminator、spec 占位和未来计划入口，避免扩大当前 scope。
+- **description-as-code 泛化**：extraction 生产 field descriptions；matching 生产 match rule descriptions；verification 生产 policy descriptions。
+
+
 ### 1.1 Workspace-level asset: Schema Template
 
 A `Template` is a Workspace-scoped, named, versioned snapshot of `(schema, global_notes, recommended_model)`. **Excludes** counterexamples、calibration data、document binaries——Template 只携带**纯文本知识**（schema descriptions / examples / enum / global_notes），跨 batch、跨 Project 无损迁移。Template 在 emerge 里成为"成熟 prompt 知识"的沉淀单元。
@@ -85,36 +113,42 @@ This contract is encoded in `system_frame` and the schema enforcement layer. **N
 
 ## 2. User workflow
 
-### 2.1 Project creation — NL-first (software 3.0 默认入口)
+### 2.1 Project creation — Docs + NL hybrid bootstrapping
 
-进入"新建 Project"页面，用户看到的是**一个对话框**（不是表单）：
+进入“新建 Project”页面，默认入口不是纯表单，也不只是纯 NL，而是 **sample docs + intent**：
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
-│  What kind of document do you want to extract?              │
+│  Create an Extract API                                      │
 │                                                             │
-│  Examples:                                                  │
-│    • "Japanese receipts. I need shop name, total, date,     │
-│       and each line item (name, qty, unit price)"           │
-│    • "German invoices — vendor info, line items with VAT"   │
-│    • "Just describe it in your own words..."                │
+│  1) Drop 3–10 sample documents                              │
+│     [ PDF / images drag area ]                              │
 │                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ [textarea]                                          │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  2) Describe the API you want                               │
+│     “Japanese receipts. I need shop name, total, date,      │
+│      and each line item.”                                   │
 │                                                             │
-│  Or skip this and start from:                               │
-│    [ Browse 5 builtin Templates ]    [ Empty Project ]     │
+│  Or start from:                                             │
+│    [ Browse builtin Templates ]    [ Empty Project ]        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-用户输入一段 NL 描述 → 后端调用 LLM 把它解析为 (schema fields with descriptions, global_notes 草稿) → 渲染成可编辑预览给用户确认 → 用户接受 → Project 创建完成 → 直接进入"上传 doc"。
+用户上传少量样本文档 + 输入自然语言需求 → 后端用样本文档和 NL 共同生成：
+- schema fields with draft descriptions
+- global_notes 草稿
+- first predictions on the sample docs
+- API response preview
 
-底部两个 escape hatch：
-- **Browse 5 builtin Templates** — 资深用户走捷径（已有现成 schema，跳过 NL 步骤）
+用户看到的第一分钟 magic moment 应该是：**文档进来，API 草稿已经出现**。样本文档只用于 schema / description bootstrapping；**不进入 runtime prompt，也不形成 image few-shot pool**。
+
+底部 escape hatch：
+- **Browse builtin Templates** — 资深用户走捷径（已有现成 schema，跳过 Docs+NL bootstrapping）
 - **Empty Project** — 完全留白，用户自己拖 doc 后从 zero-shot 起步
 
-这个布局让 software 3.0 形态在产品的**第一印象**就建立——用户用自然语言描述需求，不是填表单。
+创建页可以显示 future project type cards，但 v1 只有 Extract API 可用：
+- Extract fields from documents — enabled
+- Match documents against each other — disabled / future
+- Verify documents against rules — disabled / future
 
 ### 2.2 The main loop — batch-first progressive evolution
 
@@ -142,37 +176,57 @@ This contract is encoded in `system_frame` and the schema enforcement layer. **N
    → 系统弹"Lock schema?"
    → 用户确认 → 后续 predict 都带 responseSchema 硬约束
 7. 用户点 "Re-extract remaining" → 后台重跑其余 17 份
-   → Document 列表按 confidence 排序，flagged docs 高亮"需复核"
-8. 用户审 flagged items：
-   - 👎 字段 → 修正 → 触发 description 改进建议
+   → Document 列表按 API Readiness / risk 排序，flagged docs 进入 Review Inbox
+8. 用户审 Review Inbox：
+   - 👎 字段 → 修正 → inline 生成 description patch proposal（用户 Accept / Edit / Just fix this doc）
    - 👍 抽检 → 确认或更正
-   - 修正本身只更新 Annotation；description 是否更新由用户决定 / 由 AutoResearch 自动建议
-9. Confidence Loop 后台持续算分 → 项目级分数显示在页头
-10. 分数过阈值 → "Publish API" 按钮解锁
+   - 修正本身只保存 Annotation；任何 description 变更都必须是显式 proposal 被用户接受，或 AutoResearch candidate version 被用户接受
+9. Confidence Loop 后台持续算分 → 项目级 API Readiness 显示在页头
+10. Readiness checklist 达标 → "Publish / Activate version for API" 主 CTA 可用
 ```
 
 Project page 的形态对标 label-studio Data Manager：可筛选、可排序、可批量操作的 Document 列表。点行进 Studio（单文档矫正界面）。
 
 **Named saved views** 不在 v1 范围内。筛选是临时的。
 
-### 2.3 Schema lock prompt heuristic
+### 2.3 Schema maturity & lock prompt heuristic
 
-系统在以下条件全部满足时弹出 lock 提示：
-- 该 Project 至少有 2 条 `role=none` 的 saved Annotation（即用户矫正过 ≥ 2 份），AND
-- 这些 Annotation 的 key 集合差异 ≤ 1 个字段（agreement 90%+），AND
-- 所有共有字段的推断类型一致
+Schema lock 不应太早出现。原先“≥ 2 份矫正且字段集合接近”只能说明 schema **可能开始稳定**，不能说明已经适合锁定并发布。
 
-锁定可从 Schema editor 取消——但 API 已发布时取消会有警告。
+v1 改成 **schema maturity** 提示，而不是过早的硬 lock gate：
+
+| Maturity | Conditions | UI copy / behavior |
+|---|---|---|
+| `draft` | 少于 3 份 reviewed docs，或字段仍频繁新增/删除 | “Keep reviewing — schema is still moving.” 不提示 lock。 |
+| `stabilizing` | ≥ 3 份 reviewed docs；最近 3 份矫正的字段集差异 ≤ 1；共有字段类型一致 | “Schema looks stable. Review risky fields before locking.” 可提示继续 Review Inbox。 |
+| `lock_candidate` | ≥ 5 份 reviewed docs 或 ≥ 20 reviewed entities；核心字段都有 field-level evidence；最近 5 份矫正没有 breaking schema change；无 readiness hard blocker | 弹 “Lock schema?”，但展示 evidence coverage / risky fields。 |
+| `locked` | 用户显式确认 lock | 后续 predict 使用 responseSchema 硬约束；unlock 会创建新 ProjectVersion。 |
+
+锁定可从 Schema editor 取消。若 API 已发布，unlock / schema edit 只影响 `active_version_id`，不会改变 public API；只有显式 **Activate version for API** 才会改变 `published_version_id`。
 
 ### 2.4 Description 进化机制
 
 用户矫正 doc 时产生的"修正信号"如何流入 description？
 
 - **手动**：用户直接在 Schema editor 改 description 文字（最直接）
+- **Inline teaching proposal**：用户在 Studio 改某个字段值时，系统基于“错误值 → 正确值 + 当前文档上下文”生成一条 description patch proposal，例如“Use tax-included total, not subtotal”。用户可 `Accept` / `Edit` / `Just fix this doc`。
 - **AutoResearch 自动建议**：用户点"Improve descriptions" → researcher 看 counterexamples 和 judge 反馈，提议 description 修改 → 用户审阅是否接受
-- **绝不**：从矫正后的 JSON 自动反推 description（容易错，违反"description 是显式知识"原则）
+- **绝不自动应用**：不从矫正后的 JSON 静默反推并写入 description（容易错，违反"description 是显式知识"原则）。LLM 可以提案，但必须以可读 diff 形式被人接受。
 
 这种设计强制 description 始终是**人或 AutoResearch 显式书写**的——保证可读、可审计、可作为 Template 资产复用。
+
+### 2.5 Description Workbench — IDE-grade assistance for description-as-code
+
+如果 `description` 是代码，那么 Schema editor 不能只是 textarea。它应逐步变成 **Description Workbench**：
+
+- **Lint**：发现空 description、含糊词（“appropriate value”）、互相矛盾的字段说明、未解释 enum / required 语义。
+- **Evidence panel**：每个字段展示最近 prediction 的 field-level evidence、用户修正记录、counterexample 命中情况。
+- **Test against docs**：在右侧选择 3–5 份 docs 快速重跑当前 field description，看 before/after diff。
+- **Inline patch diff**：LLM / AutoResearch 只能提出 description patch；用户看到可读 diff 后 Accept / Edit / Reject。
+- **Examples as documentation, not few-shot**：examples 可以帮助人理解 schema，也可用于 lint / preview；runtime prompt 仍不注入 image few-shot 或 example I/O pairs。
+- **Version-aware editing**：description edit 创建新 ProjectVersion；若 API 已发布，编辑只影响 Lab active version，不影响 public API。
+
+v1 最小实现可以先做 lint + evidence panel + patch diff；完整 IDE 体验可在 R8/R9 继续增强。
 
 ---
 
@@ -202,8 +256,10 @@ Template                                # workspace asset
 
 Project
   id, workspace_id, name, created_at, created_by
+  project_type           # extraction | matching | verification; v1 accepts extraction only
   template_id            # nullable; tracks origin if forked from Template
-  active_version_id      # FK → ProjectVersion; the version the API serves
+  active_version_id      # FK → ProjectVersion; Lab/editor current version
+  published_version_id   # FK → ProjectVersion; nullable; public API serves this version only
   api_code               # nullable until published; uniqueness scoped per workspace
   api_published_at
 
@@ -233,6 +289,8 @@ Prediction
   model_id, prompt_hash
   output                  (JSONB: array<object>)
   per_field_confidence    (JSONB: { entity_idx → field_name → judge_verdict })
+  per_field_evidence      (JSONB: { entity_idx → field_name → { page?, quote?, rationale?, source_text_hash? } })
+                          # field-level evidence, no bbox / coordinates / spans; used for Review Inbox and Description Workbench
   tokens_used, latency_ms, cost_estimate, created_at
   status (success | partial | failed)
   error_message  (nullable)
@@ -272,11 +330,15 @@ ApiKey
 ### 3.2 Key invariants
 
 - A Project always has at least one ProjectVersion (initial empty version on creation).
-- `Project.active_version_id` always points to an existing ProjectVersion of the same Project. ProjectVersion is append-only — there is no archive / delete state in v1.
+- `Project.project_type` is `extraction` for all v1 Projects. `matching` / `verification` are reserved values for future project types and must not be accepted by v1 create-project APIs.
+- `Project.active_version_id` always points to an existing ProjectVersion of the same Project and represents the Lab/editor current version.
+- `Project.published_version_id` is nullable; when set, it points to an existing locked ProjectVersion of the same Project and is the only version public API calls serve.
+- ProjectVersion is append-only — there is no archive / delete state in v1.
 - `Annotation` 没有数量上限——counterexamples 全留作回归集，矫正记录全留作历史。
 - `Annotation.role` 仅允许 `counterexample` 或 `none`，DB CHECK 约束。
 - `Template.schema_json` is immutable once a Template version is created. Editing creates a new Template version.
 - 不存储 bbox 坐标（模型返回或用户画的都不存）—— v1 设计上没有这个能力。
+- `Prediction.per_field_evidence` may store page numbers, short quotes, rationales, and source text hashes, but must not store bbox coordinates or visual regions. This gives users field-level evidence without turning emerge into a visual annotation tool.
 
 ---
 
@@ -377,6 +439,34 @@ Judge calls, researcher calls, and re-prediction calls in the Lab are explicitly
 - user cancel
 
 No `$` estimates shown to user. No token caps. Production-side API has its own cost path (each call costs the user / their downstream consumer one model call); that is unrelated to Lab evolution work.
+
+### 4.5 API Readiness — product-facing confidence
+
+The internal score formula remains useful for ranking and AutoResearch, but the UI / publish gate must not collapse trust into one number. Product-facing readiness is a checklist-like summary with three axes:
+
+| Axis | Meaning | Display rule |
+|---|---|---|
+| **Quality estimate** | judge-calibrated estimate over the current vibe-check set | Show score + CI / observation count. Never show judge precision as a naked number. |
+| **Evidence coverage** | how much human review exists | reviewed docs / entities / fields, plus risky fields with low evidence |
+| **Regression health** | whether known counterexamples are fixed | show `passed / total`; if total = 0, display `No production feedback yet`, never `100%` |
+
+Example header:
+
+```text
+API Readiness
+Quality: 86% ± 8%    Evidence: 12 docs / 48 entities reviewed
+Regression: 7 / 8 passing    Risky fields: tax_id, currency
+```
+
+Publish is gated by readiness checklist, not by a single composite score. The default v1 checklist:
+- schema is locked
+- at least one non-empty active ProjectVersion exists
+- readiness endpoint returns no hard blockers
+- if counterexample pool is empty, UI warns `No production feedback yet` but may still allow publish with explicit acknowledgement
+- if judge calibration CI is wide or observations are low, UI warns `Low evidence`
+
+The old `score` can remain as backend/internal data, but product surfaces should say **API Readiness**, not “confidence = ready”.
+
 
 ---
 
@@ -486,16 +576,35 @@ Confirms → creates Template / Template version. Does not modify the source Pro
 
 ---
 
-## 7. API Publish
+## 7. API Publish & Release Safety
 
 ### 7.1 Endpoints
 
-The published API is a thin façade over `Project.active_version_id`. Each public call invokes that version's schema + prompt elements + model. No artefact pinning.
+The public API is a thin façade over `Project.published_version_id`, not over the Lab/editor `active_version_id`. This is the minimal release-safety layer: users can continue editing / activating candidate versions in the Lab without immediately breaking API consumers.
 
-```
+```text
 POST /api/v1/projects/{pid}/publish
-  body: { api_code: "japan-receipts" }
-  → sets project.api_code; returns project state
+  body: { api_code: "japan-receipts", project_version_id?: <id> }
+  → validates target version is locked and belongs to the project
+  → sets project.api_code if provided / changed
+  → sets project.published_version_id = target version
+  → sets project.api_published_at
+  → returns project state
+
+POST /api/v1/projects/{pid}/unpublish
+  → clears api_published_at (api_code remains reserved)
+  → public API returns 403 while unpublished
+
+POST /api/v1/projects/{pid}/rollback
+  body: { project_version_id: <previous_locked_version_id> }
+  → sets project.published_version_id to a previous locked version
+  → public API uses it on the next call
+
+GET /api/v1/projects/{pid}/contract-diff?from_version_id=<id>&to_version_id=<id>
+  → returns breaking / non-breaking output contract changes
+
+GET /api/v1/projects/{pid}/readiness
+  → returns API Readiness summary: quality estimate, evidence coverage, regression health, risky fields, publish blockers/warnings
 
 POST /api/v1/projects/{pid}/api-keys
   body: { name: "default" }
@@ -504,7 +613,7 @@ POST /api/v1/projects/{pid}/api-keys
 POST /extract/{api_code}                                    (public, no JWT; key-only)
   header: X-Api-Key: ek_…
   body: multipart file
-  → 200 OK { entities: [...], project_version: <int>, prediction_id: <id> }
+  → 200 OK { entities: [...], project_version: <published_version_id>, prediction_id: <id> }
   → 401 missing/bad key
   → 403 project unpublished
   → 404 api_code unknown
@@ -513,26 +622,80 @@ POST /extract/{api_code}                                    (public, no JWT; key
 
 POST /extract/{api_code}/feedback                           (public, called by integrators after detecting bad output)
   header: X-Api-Key: ek_…
-  body: { request_id: <prediction_id>, correct_output: [...] }
-  → creates Annotation with role=counterexample, parent_prediction_id=<id>
+  body one of:
+    { request_id: <prediction_id>, correct_output: [...] }     # full feedback
+    {
+      request_id: <prediction_id>,
+      corrections: [                                           # partial feedback
+        { entity_index: 0, field_path: "total", correct_value: 1234, comment?: "tax-included total" },
+        { entity_index: 1, field_path: "line_items[2].price", correct_value: 99 }
+      ],
+      issue_type?: "wrong_value" | "missing_field" | "extra_field" | "wrong_entity_count" | "other"
+    }
+  → full feedback creates Annotation with role=counterexample, parent_prediction_id=<id>
+  → partial feedback creates a feedback issue and, when possible, a patched counterexample Annotation by applying corrections to the original Prediction output
   → 200 OK
   → 401 / 403 / 404 same as above
-  → 422 prediction_id does not belong to this api_code
+  → 422 prediction_id does not belong to this api_code or patch path is invalid
 
 # API key validation pattern: ek_<8-char-prefix>-<32-char-secret>.
 # Server splits on the first '-' after the prefix marker, looks up by prefix (indexed),
 # bcrypt-compares the secret half against key_hash. Constant-time comparison.
 ```
 
-### 7.2 Live-version semantics
+### 7.2 Published-version semantics
 
-The published API reads `Project.active_version_id` on every incoming call:
+There are two version pointers:
 
-- 用户改 schema → 下一次 API 调用立即用新 schema
-- AutoResearch 产出新 ProjectVersion，用户在 timeline 上设为 active → 下一次调用立即生效
-- 用户 unpublish → API 返回 403
+| Pointer | Meaning | Used by |
+|---|---|---|
+| `active_version_id` | Lab/editor current version. User can set this from version timeline. AutoResearch outputs candidate versions that user may activate for Lab. | Studio, internal re-extract, AutoResearch, schema editor |
+| `published_version_id` | Production/public API version. Must be explicitly set by Publish / Activate for API. | `POST /extract/{api_code}` only |
 
-**没有缓存、没有版本钉，单环路语义**——无需调用方做任何重新部署。
+Rules:
+- 用户改 schema / global_notes → creates a new ProjectVersion and may update `active_version_id`; public API is unchanged.
+- AutoResearch 产出新 ProjectVersion → user may activate it for Lab; public API is unchanged.
+- 用户在 Publish / API Console 中点 **Activate version for API** → `published_version_id` changes; next public call uses that version.
+- 用户 unpublish → API 返回 403; `api_code` stays reserved; `published_version_id` may remain for later re-publish.
+- 用户 rollback → `published_version_id` moves back to a previous locked ProjectVersion.
+
+This is not a full Lab/Prod artefact split. There is still one ProjectVersion timeline and one public endpoint. The only product-safety rule is: **editing does not equal publishing**.
+
+### 7.3 Contract diff
+
+Before activating a version for API, UI must show a contract diff between current `published_version_id` and target version.
+
+Breaking changes:
+- field removed
+- field renamed (detected as removed + added; UI may display as possible rename if names/types/descriptions are similar)
+- type changed
+- required tightened (`required=false → true`)
+- enum narrowed
+- top-level output contract changed (not allowed for ExtractionProject v1)
+
+Non-breaking changes:
+- description edited
+- global_notes edited
+- optional field added
+- required loosened (`true → false`)
+- enum widened
+- examples changed
+
+Publishing with breaking changes is allowed in v1, but requires explicit acknowledgement in the UI. API Console must show current published version and target version.
+
+### 7.4 API Console product surface
+
+After publish, "Publish API" becomes an API Console, not just a key-reveal modal. Minimum v1 console:
+- current published version and active Lab version
+- readiness summary
+- contract preview and contract diff
+- curl snippet
+- Python / JS snippets (static generated examples are fine)
+- API key create/list/revoke
+- feedback example
+- rollback / unpublish controls
+
+Recent API call logs are valuable future product surfaces, but not required for R7.5 unless cheap. Partial feedback **is** part of the public feedback contract: integrators should not be forced to reconstruct the full `correct_output` when they only know “field X was wrong”.
 
 ---
 
@@ -554,28 +717,36 @@ The published API reads `Project.active_version_id` on every incoming call:
 
 这映射 label-studio 的真实使用模式：90%+ 用户不知道有 Workspace。
 
-### 8.1 Project page (Document list view)
+### 8.1 Project page (Review Inbox + Document list view)
 
-Shape: a filterable, sortable table. One row per Document.
+The Project page is not only a Data Manager table; it is also the product surface of API Readiness. The top area is a **Review Inbox** that tells the user where human attention has the highest leverage:
+
+```text
+Review Inbox
+7 need review    2 spot-checks    3 production feedback issues
+[Review next]
+```
+
+Below the inbox, keep the filterable, sortable table. One row per Document.
 
 Columns (default visible):
 - Filename
 - Status (uploaded / extracting / extracted / errored)
 - Entity count (length of latest Prediction's array output)
-- Confidence (latest, per-doc score from the Confidence Loop)
+- Risk / readiness signal (latest per-doc score + flagged fields; product label is not raw confidence)
 - Annotation 状态 (none / counterexample) + 矫正过的标记
 - Last modified
 
 Filters (ephemeral, not saved as named views in v1):
-- Status、是否已矫正、是否 counterexample、confidence range、entity-count range
+- Status、是否已矫正、是否 counterexample、risk/readiness range、entity-count range
 
 Top toolbar:
 - "Upload" (drag-and-drop multi-file)
 - "Re-extract selected" / "Re-extract all"
 - "Run AutoResearch"
 - "Schema editor" (opens panel)
-- Project-level confidence score (large display)
-- "Publish API" / "Manage API Keys"
+- Project-level API Readiness header (quality + evidence + regression, not a naked score)
+- "API Console" / "Manage API Keys" / "Activate version for API"
 
 Click a row → enters **Studio** for that Document.
 
@@ -610,7 +781,9 @@ Left: 60–70% width Document Preview. Renders PDFs (page-by-page scroll) and im
 Right: entity-grouped field list. Each entity is a card; expandable / collapsible. Each field row supports:
 - inline value edit
 - field deletion
-- per-field "report wrong" (sets a flag on the field that informs Confidence weighting)
+- per-field "report wrong" (sets a flag on the field that informs readiness / risky-field weighting)
+- **Evidence** popover: page / quote / rationale from `Prediction.per_field_evidence`; no bbox overlay or visual region selection
+- **Teach model** action: opens inline description patch proposal for this field, not a hidden automatic prompt change
 
 Bottom buttons:
 - **Schema editor** — 滑出一个 panel，**双模式**（见 §8.4）。这是 emerge 的核心编辑面，所有"教模型"的工作发生在这里。
@@ -683,6 +856,25 @@ Chat mode 实现：
 - No bbox overlay (multimodal LLMs are unreliable for this; deferred to v2)
 - No three-column "annotate fields" layout (replaced by entity-grouped cards)
 - No "next undone document" task queue (Document list filters cover this)
+- No "labeling queue" terminology — this is not an annotation product
+
+### 8.5 Product terminology
+
+Product-facing UI should avoid annotation-platform / eval-tool wording unless the user is in an advanced/debug context.
+
+| Internal / technical term | Product-facing term |
+|---|---|
+| Project with extraction schema | Extract API |
+| Confidence score | API Readiness |
+| Low-confidence documents | Needs review / Review Inbox |
+| Annotation | Correction / Reviewed output |
+| Counterexample | Production feedback / Regression case |
+| active version | Lab version / Draft version |
+| published version | API version / Production API version |
+| Schema editor textarea | Description Workbench |
+| Publish API modal | API Console |
+
+This naming matters: emerge should feel like an API product that learns from corrections, not a labeling platform with an API bolted on.
 
 ---
 
@@ -691,17 +883,17 @@ Chat mode 实现：
 ### In scope
 
 - Workspace + multi-tenant isolation (mirroring label-studio / doc-intel-legacy patterns)
-- Project + Schema Template + 5 builtin Templates
+- Project with `project_type=extraction` + Schema Template + 5 builtin Templates
 - Document upload (multi-file batch)
 - Zero-shot extraction with array `responseSchema` — **prompt 不带任何 image few-shot**
-- Schema auto-derivation from user corrections + lock workflow
-- Schema editor with per-field NL descriptions, types, examples, enums
+- Schema maturity + lock workflow based on reviewed docs/entities, field-level evidence, and no readiness hard blockers
+- Schema editor / Description Workbench with per-field NL descriptions, types, examples, enums, lint, evidence panel, and patch diff
 - Counterexample Pool (Annotation `role=counterexample`，仅作 AutoResearch 回归测试)
-- Confidence Loop (judge + counterexample regression + human review + Bayesian calibration)
+- Confidence Loop (judge + counterexample regression + human review + Bayesian calibration) plus product-facing API Readiness
 - AutoResearch (single Reflexion loop + action toolkit, manual + optional semi-automatic trigger)
-- ProjectVersion timeline, manual setting of active_version
-- API publish bound to Project's active version
-- Feedback endpoint receiving counterexamples from API consumers
+- ProjectVersion timeline, manual setting of `active_version_id` for Lab
+- API publish bound to explicit `published_version_id` with contract diff / rollback safety
+- Feedback endpoint receiving full and partial production feedback from API consumers
 - Document list view (Data Manager-style)
 - 2-column Studio (per-doc correction view)
 
@@ -710,13 +902,14 @@ Chat mode 实现：
 实施 LLM 警惕这些，不要意外加进来：
 
 - Bbox of any kind (model-returned / user-drawn / hover-highlight)
-- Lab / Prod artefact split — `ProjectVersion` 已是基础，但 v1 不引入独立 Promote 动作
+- Full Lab / Prod artefact split — v1 only adds the minimal `published_version_id` safety pointer; no separate environments, deployments, approval workflows, or artefact registries
 - Saved named views on Document list (筛选是临时的)
 - Webhooks / push notifications
 - Multi-user real-time collaboration / annotation locking
 - Project clone
 - Project-level statistics dashboard tab
 - Comparison view (model A vs model B 并排)
+- MatchingProject / VerificationProject implementation（同应用 future project types；v1 只预留 `project_type`）
 
 ---
 
@@ -725,14 +918,15 @@ Chat mode 实现：
 | Risk | Mitigation |
 |---|---|
 | Multimodal LLM 多实体识别不稳 | Judge prompt explicitly asks "how many entities?"; UI 支持手动 "add entity" / "delete entity"; entity-count 错误形成 counterexample 喂 AutoResearch |
-| Zero-shot draft 太差导致 onboarding 崩溃 | Strong default `system_frame` for open-ended extraction；NL-first onboarding（§2.1）让用户先描述需求，schema 一次性形成；Template 入口提供高质量起点 |
-| Schema lock 后悔 | Schema editor 可随时 unlock；unlock 创建新 ProjectVersion；如果 API 已 publish，unlock 时弹警告 |
-| AutoResearch goes rogue | Action toolkit is a whitelist; turn history transparent and human-readable; output is a candidate ProjectVersion never auto-promoted; max_turn + 3-turn no-improvement early stop |
+| Zero-shot draft 太差导致 onboarding 崩溃 | Strong default `system_frame` for open-ended extraction；Docs+NL onboarding（§2.1）让用户先给样本文档和需求，schema + first predictions 一起出现；Template 入口提供高质量起点 |
+| Schema lock 后悔 | Schema editor 可随时 unlock；unlock 创建新 ProjectVersion；如果 API 已 publish，active_version 变化不会影响 public API，只有显式 Activate for API 才会改变 `published_version_id` |
+| AutoResearch goes rogue | Action toolkit is a whitelist; turn history transparent and human-readable; output is a candidate ProjectVersion never auto-promoted to Lab active version or public published version; max_turn + 3-turn no-improvement early stop |
 | Judge calibration cold-start | Beta(8,2) prior gives a sane 80% starting point; UI displays `± CI` so users see the uncertainty; spot-check sampling forces calibration data accumulation |
 | Multimodal model returns inconsistent JSON shape pre-lock | `responseSchema` enforced at API level even before user lock (uses derived candidate schema); model output is structurally constrained from call #1 |
 | Workspace admin picks bad researcher model | Default = Opus; admins must opt-in to change; if change degrades performance, it shows immediately in turn-history score deltas |
 | Single user iterating produces small calibration sample (< 30 obs) | UI shows wide CI explicitly; recommendation to keep batch ≥ 10 docs; `judge_precision_calibrated` defaults to prior mean when CI is too wide |
 | User uploads 50+ docs and zero-shot batch overruns | Batch extraction runs as background SSE task with per-document progress events; UI does not block; failures mark per-document `errored` status without aborting batch |
+| Public API 被 schema 微调意外破坏 | Public API reads `published_version_id`, not `active_version_id`; contract diff warns on breaking changes; rollback points back to a previous locked ProjectVersion |
 
 ---
 
@@ -814,16 +1008,17 @@ This document is intentionally a **single overall design** rather than feature-c
 | **R4 — Corrections & Counterexamples** | Annotation `role` (none / counterexample); 矫正保存路径；feedback API（生成 counterexample）；counterexample 列表 API | R3 |
 | **R5 — Confidence Loop & Calibration** | Judge integration; counterexample regression computation; JudgeCalibration table + Beta updates; UI surfacing of human review queue | R4 |
 | **R6 — AutoResearch** | AutoResearchRun table; Reflexion loop; action toolkit dispatch（仅文本类 action）；turn history rendering; manual + semi-automatic triggers | R5 |
-| **R7 — Templates & API publish** | Template table + 5 builtin seeders（仅 schema descriptions）; Save-as-Template; API publish + key + feedback routing; rate limiting | R3 (parallel to R4) |
-| **R8 — UI** | **首要 task：建立 §11 的三层底座**（i18n catalog + `useT` hook、light/dark token system、Radix/shadcn 基础组件）；之后才铺 Document list page、Studio (per-doc correction view, 2-column)、Schema editor panel（核心面）、AutoResearch run viewer、Project page header / publish flow | R2 onwards, in parallel with backend slices |
+| **R7 — Templates & initial API publish** | Template table + 5 builtin seeders（仅 schema descriptions）; Save-as-Template; initial API publish + key + feedback routing; rate limiting | R3 (parallel to R4) |
+| **R7.5 — Productization & Release Readiness** | `project_type=extraction`; `published_version_id`; public API serves published version; contract diff; rollback; API Readiness endpoint; docs alignment before UI | R7 |
+| **R8 — UI** | **首要 task：建立 §11 的三层底座**（i18n catalog + `useT` hook、light/dark token system、Radix/shadcn 基础组件）；之后铺 Docs+NL project creation、Review Inbox + Document list、Studio inline teaching proposal、Schema editor、AutoResearch run viewer、API Readiness header、API Console / publish flow | R7.5 for publish/readiness surfaces; R2 onwards for earlier screens |
 
-R1, R2, R3 是串行 foundation。R4–R7 可以双人并行。R8 跟随每个后端 slice 落地。
+R1, R2, R3 是串行 foundation。R4–R7 可以双人并行。**R7.5 必须在 R8 publish/readiness UI 前完成**，因为它改变 public API version semantics。R8 跟随每个后端 slice 落地。
 
 writing-plans 可参考的 v1 milestone 结构：
 - **M1 Walking skeleton** — R1 + R2 + R3 最小：用户能上传、zero-shot 提取、在 Studio 编辑 JSON、保存矫正。无 judge、无 AutoResearch、无 Templates。
 - **M2 Confidence** — R4 + R5：counterexample 路径、judge、calibration、人审队列。项目级 confidence score 可见。
 - **M3 Evolution** — R6：AutoResearch run loop、action toolkit（纯文本动作）、turn history。
-- **M4 Reuse + ship** — R7 + R8 polish：Templates、API publish、公开 extract 端点、反馈回路端到端跑通。
+- **M4 Reuse + ship** — R7 + R7.5 + R8 polish：Templates、release-safe API publish、公开 extract 端点、readiness、反馈回路端到端跑通。
 
 writing-plans is the proper next phase to translate this into per-slice plans with task lists and TDD ordering.
 
@@ -858,4 +1053,4 @@ Choice rationale: "emerge" carries both software-3.0 emergence semantics (the AP
 
 ## End of design
 
-Ready for review. The natural next phase is `writing-plans` to slice this into R1–R8 plans with concrete task lists.
+Ready for review. Current implementation uses R1–R8 plans plus the post-R7 adjustment plan `R7.5 — Productization & Release Readiness`.

@@ -1,10 +1,10 @@
 # emerge
 
-Software 3.0 文档抽取平台。**Slogan**: Documents in. APIs emerge. They get better as you correct them.
+Software 3.0 文档 API 平台（v1 只实现 ExtractionProject）。**Slogan**: Documents in. APIs emerge. They get better as you correct them.
 
 - Spec (single source of truth): `docs/superpowers/specs/2026-05-02-overall-design.md`
-- 实施 plan: `docs/superpowers/plans/2026-05-03-r{1..8}-*.md`，按 R1→R2→R3 串行；R4–R7 可并行；R8 跟随后端 slice 落
-- Milestone: M1 = R1+R2+R3 walking skeleton; M2 = R4+R5; M3 = R6; M4 = R7+R8
+- 实施 plan: `docs/superpowers/plans/2026-05-03-r{1..8}-*.md` + `2026-05-04-r7_5-productization-release-readiness.md`；按 R1→R2→R3 串行；R4–R7 可并行；R7.5 在 R8 publish/readiness UI 前落
+- Milestone: M1 = R1+R2+R3 walking skeleton; M2 = R4+R5; M3 = R6; M4 = R7+R7.5+R8
 
 ## Collaboration
 
@@ -13,7 +13,7 @@ Software 3.0 文档抽取平台。**Slogan**: Documents in. APIs emerge. They ge
 - manual-confirm: destructive 操作（drop table、force-push、大改 plan、改 spec）先问
 - 用户是 Karpathy software-3.0 fluent + label-studio veteran，不需要解释 task/annotation/prediction 分离这种基础概念
 - Lab side 不预算 token / $ — 只 `max_turn` 和 `early_stop_no_improvement` 边界 (spec §4.4)
-- v1 scoping 默认 cut 而非 add；用户已经 cut Lab/Prod artefact split、image few-shot、named saved views、project clone
+- v1 scoping 默认 cut 而非 add；用户已经 cut full Lab/Prod artefact split、image few-shot、named saved views、project clone；MatchingProject/VerificationProject 只预留同应用 project_type，不在 v1 实现
 
 ## Engineering
 
@@ -30,7 +30,7 @@ Software 3.0 文档抽取平台。**Slogan**: Documents in. APIs emerge. They ge
 - **没有 bbox / 区域信息**。Annotation 是 JSON 矫正，不存坐标 (spec §3.2)
 - **AutoResearch 永不自动 promote**。output 是候选 ProjectVersion，user 必须显式 activate (spec §5.1)
 - **Counterexample 永不进 runtime prompt**。仅作 AutoResearch 回归测试集 (spec §1)
-- **Project.active_version_id 是 live read**：每次公开 API 调用即时读，不缓存、不版本钉 (spec §7.2)
+- **Public API 读 Project.published_version_id，不读 active_version_id**：active 是 Lab/editor 当前版本；published 才是生产公开 API 版本。编辑/AutoResearch 激活不得自动影响 public API，必须显式 Activate for API (spec §7.2)
 
 ## 仓库布局
 
