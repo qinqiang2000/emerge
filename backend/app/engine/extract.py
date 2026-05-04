@@ -21,6 +21,38 @@ def _hash_prompt(system: str, response_schema: dict) -> str:
     return hashlib.sha256(payload).hexdigest()[:32]
 
 
+# Spec §3.2 hard rule: per_field_evidence stores page / quote / rationale /
+# source_text_hash only — no bbox / coordinates / polygons / regions / spans.
+# Allow-list rather than deny-list so any future provider key surprise is
+# rejected by default, not silently persisted.
+_ALLOWED_EVIDENCE_KEYS = frozenset({"page", "quote", "rationale", "source_text_hash"})
+
+
+def _sanitize_evidence(evidence) -> dict | None:
+    """Strip non-allow-listed keys from per_field_evidence.
+
+    Cells whose only keys were forbidden are dropped entirely so callers see a
+    coherent shape; entities reduced to no fields are also dropped. Returning
+    None when nothing survives keeps the column nullable rather than {}.
+    """
+    if not isinstance(evidence, dict):
+        return None
+    cleaned: dict[str, dict] = {}
+    for entity_idx, ent in evidence.items():
+        if not isinstance(ent, dict):
+            continue
+        ent_cleaned: dict[str, dict] = {}
+        for field_name, cell in ent.items():
+            if not isinstance(cell, dict):
+                continue
+            allowed = {k: v for k, v in cell.items() if k in _ALLOWED_EVIDENCE_KEYS}
+            if allowed:
+                ent_cleaned[field_name] = allowed
+        if ent_cleaned:
+            cleaned[entity_idx] = ent_cleaned
+    return cleaned or None
+
+
 async def extract_document(
     document_id: int,
     *,
@@ -67,8 +99,7 @@ async def extract_document(
         evidence = None
         if result.raw_response and isinstance(result.raw_response, dict):
             ev = result.raw_response.get("per_field_evidence")
-            if isinstance(ev, dict):
-                evidence = ev
+            evidence = _sanitize_evidence(ev)
         pred = Prediction(
             document_id=d.id,
             project_version_id=v.id,

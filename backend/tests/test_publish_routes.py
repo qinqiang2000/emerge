@@ -156,12 +156,105 @@ async def test_api_code_unique_per_workspace(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_api_code_unique_globally_across_workspaces(client, db_session):
+    """The public route /extract/{api_code} has no workspace context, so the
+    same api_code in two different workspaces would be ambiguous. R7.5
+    hardening: enforce global uniqueness, not just per-workspace.
+    """
+    from sqlalchemy import select
+
+    from app.models.project import Project
+    from app.models.project_version import ProjectVersion
+
+    h_a, pid_a = await _auth_and_project(client, "ga@ga.com")
+    await client.patch(
+        f"/api/v1/projects/{pid_a}/schema",
+        json={
+            "schema": [{"name": "shop_name", "type": "string", "description": "店名"}],
+            "global_notes": "",
+            "model_id": "m",
+        },
+        headers=h_a,
+    )
+    proj_a = (await db_session.execute(select(Project).where(Project.id == pid_a))).scalar_one()
+    v_a = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == proj_a.active_version_id)
+        )
+    ).scalar_one()
+    v_a.locked = True
+    await db_session.commit()
+    r1 = await client.post(
+        f"/api/v1/projects/{pid_a}/publish", json={"api_code": "global-code"}, headers=h_a
+    )
+    assert r1.status_code == 200, r1.text
+
+    # Different user → different workspace.
+    h_b, pid_b = await _auth_and_project(client, "gb@gb.com")
+    await client.patch(
+        f"/api/v1/projects/{pid_b}/schema",
+        json={
+            "schema": [{"name": "shop_name", "type": "string", "description": "店名"}],
+            "global_notes": "",
+            "model_id": "m",
+        },
+        headers=h_b,
+    )
+    proj_b = (await db_session.execute(select(Project).where(Project.id == pid_b))).scalar_one()
+    assert proj_b.workspace_id != proj_a.workspace_id
+    v_b = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == proj_b.active_version_id)
+        )
+    ).scalar_one()
+    v_b.locked = True
+    await db_session.commit()
+
+    r2 = await client.post(
+        f"/api/v1/projects/{pid_b}/publish", json={"api_code": "global-code"}, headers=h_b
+    )
+    assert r2.status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_publish_invalid_api_code_validation(client):
     h, pid = await _auth_and_project(client, "inv@inv.com")
     resp = await client.post(
         f"/api/v1/projects/{pid}/publish", json={"api_code": "Bad Code With Spaces"}, headers=h
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_api_code_too_long(client):
+    """Spec §7.1 / R7.5 hardening: api_code length must be 1-64 chars."""
+    h, pid = await _auth_and_project(client, "len@len.com")
+    too_long = "a" * 65
+    resp = await client.post(
+        f"/api/v1/projects/{pid}/publish", json={"api_code": too_long}, headers=h
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_empty_api_code(client):
+    h, pid = await _auth_and_project(client, "len2@len.com")
+    resp = await client.post(
+        f"/api/v1/projects/{pid}/publish", json={"api_code": ""}, headers=h
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_publish_accepts_max_length_api_code(client, db_session):
+    h, pid = await _auth_and_project(client, "len3@len.com")
+    _, _ = await _patch_and_lock(client, db_session, pid, h)
+    code = "a" + ("b" * 62) + "c"  # 64 chars
+    assert len(code) == 64
+    resp = await client.post(
+        f"/api/v1/projects/{pid}/publish", json={"api_code": code}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
 
 
 async def _patch_and_lock(client, db_session, pid: int, headers, schema=None):
@@ -255,6 +348,35 @@ async def test_publish_can_target_locked_non_active_version(client, db_session):
     body = res.json()
     assert body["active_version_id"] == new_active.id
     assert body["published_version_id"] == old_locked.id
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_empty_schema(client, db_session):
+    """Spec §4.5 publish blocker: target version with empty schema snapshot
+    must not be promoted to public API. Empty contract = no useful API."""
+    from sqlalchemy import select
+
+    from app.models.project import Project
+    from app.models.project_version import ProjectVersion
+
+    h, pid = await _auth_and_project(client, "es@es.com")
+    proj = (await db_session.execute(select(Project).where(Project.id == pid))).scalar_one()
+    v = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == proj.active_version_id)
+        )
+    ).scalar_one()
+    # Initial ProjectVersion has [] schema_snapshot. Lock it directly to bypass
+    # other publish gates so we isolate the empty-schema blocker.
+    assert v.schema_snapshot == []
+    v.locked = True
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/v1/projects/{pid}/publish", json={"api_code": "es-rcpt"}, headers=h
+    )
+    assert resp.status_code == 409
+    assert "empty" in resp.json()["error_message_en"].lower() or "schema" in resp.json()["error_message_en"].lower()
 
 
 @pytest.mark.asyncio

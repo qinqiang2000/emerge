@@ -56,10 +56,20 @@ async def publish(
             status_code=409,
             message_override="Target version must be locked before publishing.",
         )
+    # Spec §4.5: empty_schema is a hard publish blocker — promoting a contract
+    # with no fields would publish a useless API and leak Lab placeholders.
+    if not v.schema_snapshot:
+        raise EmergeError(
+            ErrorCode.CONFLICT,
+            status_code=409,
+            message_override="Target version has empty schema; nothing to publish.",
+        )
+    # api_code is global because /extract/{api_code} has no workspace context
+    # (spec §7.1, R7.5 hardening). Two workspaces sharing the same code would
+    # make the public route ambiguous, so reject collisions across the system.
     clash = (
         await session.execute(
             select(Project).where(
-                Project.workspace_id == workspace_id,
                 Project.api_code == payload.api_code,
                 Project.id != p.id,
             )
@@ -69,7 +79,7 @@ async def publish(
         raise EmergeError(
             ErrorCode.CONFLICT,
             status_code=409,
-            message_override=f"api_code '{payload.api_code}' already in use in this workspace.",
+            message_override=f"api_code '{payload.api_code}' already in use.",
         )
 
     p.api_code = payload.api_code

@@ -9,7 +9,11 @@ from app.models.base import Base, TimestampMixin
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
     __table_args__ = (
-        UniqueConstraint("workspace_id", "api_code", name="uq_project_workspace_api_code"),
+        # api_code uniqueness is GLOBAL (spec §7.1): the public /extract/{api_code}
+        # route has no workspace context, so two workspaces sharing a code would
+        # make resolution ambiguous. Multiple NULLs are still allowed because
+        # SQLite/Postgres treat NULLs as distinct in unique indexes.
+        UniqueConstraint("api_code", name="uq_project_api_code"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

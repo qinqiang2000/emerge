@@ -7,7 +7,9 @@ _API_CODE = re.compile(r"^[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$|^[a-z0-9]$")
 
 
 class PublishIn(BaseModel):
-    api_code: str
+    # Length 1-64 enforced explicitly: spec §7.1 advertises that bound and the
+    # public route /extract/{api_code} stores it indefinitely as a primary key.
+    api_code: str = Field(min_length=1, max_length=64)
     # Optional explicit version; defaults to project.active_version_id at publish time.
     project_version_id: int | None = None
 

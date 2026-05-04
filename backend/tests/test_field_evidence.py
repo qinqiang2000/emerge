@@ -131,6 +131,170 @@ async def test_extract_persists_evidence_when_provider_supplies_it(
 
 
 @pytest.mark.asyncio
+async def test_extract_strips_forbidden_evidence_keys_when_provider_emits_them(
+    app, db_session, tmp_path, monkeypatch
+):
+    """Spec §3.2 hard rule: per_field_evidence must not store bbox /
+    coordinates / polygon / region / span. Even if a provider returns them
+    (some upstream OCR-aware models do), the engine must strip them before
+    persisting and only retain the allow-listed shape (page / quote /
+    rationale / source_text_hash).
+    """
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    from app.models.project import Project
+    from app.models.project_version import ProjectVersion, VersionSource
+    from app.models.user import User
+    from app.models.workspace import Workspace
+
+    u = User(email="san@san.com", password_hash="x")
+    db_session.add(u)
+    await db_session.flush()
+    w = Workspace(name="W", owner_id=u.id)
+    db_session.add(w)
+    await db_session.flush()
+    proj = Project(workspace_id=w.id, name="P", created_by=u.id)
+    db_session.add(proj)
+    await db_session.flush()
+    v = ProjectVersion(
+        project_id=proj.id,
+        version_number=1,
+        schema_snapshot=[{"name": "total", "type": "number", "description": "total"}],
+        global_notes_snapshot="",
+        model_id_snapshot="m",
+        counterexample_ids=[],
+        source=VersionSource.INITIAL.value,
+        source_metadata={},
+        created_by=u.id,
+    )
+    db_session.add(v)
+    await db_session.flush()
+    proj.active_version_id = v.id
+    await db_session.flush()
+
+    file_path = tmp_path / "z.pdf"
+    file_path.write_bytes(b"PDF")
+    doc = Document(
+        project_id=proj.id,
+        filename="z.pdf",
+        file_path=str(file_path),
+        mime_type="application/pdf",
+        page_count=1,
+        byte_size=3,
+        uploaded_by=u.id,
+        status=DocumentStatus.UPLOADED.value,
+    )
+    db_session.add(doc)
+    await db_session.commit()
+    await db_session.refresh(doc)
+
+    dirty_evidence = {
+        "0": {
+            "total": {
+                "page": 1,
+                "quote": "Total ¥1,234",
+                "rationale": "tax-included total",
+                "source_text_hash": "abc123",
+                # Forbidden visual-localisation keys must be stripped:
+                "bbox": [10, 20, 100, 50],
+                "coordinates": {"x": 10, "y": 20},
+                "polygon": [[0, 0], [1, 0], [1, 1]],
+                "region": "page-1-line-3",
+                "span": [120, 132],
+                # Unknown keys must also be stripped (allow-list, not deny-list):
+                "model_uncertainty": 0.42,
+            }
+        }
+    }
+    provider = _EvidenceProvider(output=[{"total": 1234}], evidence=dirty_evidence)
+
+    pred = await extract_document(doc.id, session=db_session, provider=provider)
+
+    cell = pred.per_field_evidence["0"]["total"]
+    # Allow-listed keys preserved
+    assert cell["page"] == 1
+    assert cell["quote"] == "Total ¥1,234"
+    assert cell["rationale"] == "tax-included total"
+    assert cell["source_text_hash"] == "abc123"
+    # Forbidden + unknown keys stripped
+    for forbidden in (
+        "bbox",
+        "coordinates",
+        "polygon",
+        "region",
+        "span",
+        "model_uncertainty",
+    ):
+        assert forbidden not in cell
+
+
+@pytest.mark.asyncio
+async def test_extract_drops_evidence_cell_when_no_allow_listed_keys_remain(
+    app, db_session, tmp_path, monkeypatch
+):
+    """Cells consisting only of forbidden keys are dropped entirely so the
+    persisted evidence shape stays trustworthy."""
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    from app.models.project import Project
+    from app.models.project_version import ProjectVersion, VersionSource
+    from app.models.user import User
+    from app.models.workspace import Workspace
+
+    u = User(email="san2@san.com", password_hash="x")
+    db_session.add(u)
+    await db_session.flush()
+    w = Workspace(name="W", owner_id=u.id)
+    db_session.add(w)
+    await db_session.flush()
+    proj = Project(workspace_id=w.id, name="P", created_by=u.id)
+    db_session.add(proj)
+    await db_session.flush()
+    v = ProjectVersion(
+        project_id=proj.id,
+        version_number=1,
+        schema_snapshot=[{"name": "total", "type": "number", "description": "total"}],
+        global_notes_snapshot="",
+        model_id_snapshot="m",
+        counterexample_ids=[],
+        source=VersionSource.INITIAL.value,
+        source_metadata={},
+        created_by=u.id,
+    )
+    db_session.add(v)
+    await db_session.flush()
+    proj.active_version_id = v.id
+    await db_session.flush()
+
+    file_path = tmp_path / "zz.pdf"
+    file_path.write_bytes(b"PDF")
+    doc = Document(
+        project_id=proj.id,
+        filename="zz.pdf",
+        file_path=str(file_path),
+        mime_type="application/pdf",
+        page_count=1,
+        byte_size=3,
+        uploaded_by=u.id,
+        status=DocumentStatus.UPLOADED.value,
+    )
+    db_session.add(doc)
+    await db_session.commit()
+    await db_session.refresh(doc)
+
+    dirty = {
+        "0": {
+            "good": {"page": 2, "quote": "OK"},
+            "only_bbox": {"bbox": [1, 2, 3, 4]},
+        }
+    }
+    provider = _EvidenceProvider(output=[{"good": 1, "only_bbox": 2}], evidence=dirty)
+
+    pred = await extract_document(doc.id, session=db_session, provider=provider)
+
+    assert "good" in pred.per_field_evidence["0"]
+    assert "only_bbox" not in pred.per_field_evidence["0"]
+
+
+@pytest.mark.asyncio
 async def test_extract_leaves_evidence_none_when_provider_omits(
     app, db_session, tmp_path, monkeypatch
 ):
