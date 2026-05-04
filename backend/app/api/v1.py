@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import annotations, auth, documents, extraction, me, projects, publish, scores, templates, versions
+from app.api.routes import annotations, auth, auto_research, documents, extraction, me, projects, publish, scores, templates, versions
 
 api_v1 = APIRouter(prefix="/api/v1")
 api_v1.include_router(auth.router)
@@ -13,3 +13,4 @@ api_v1.include_router(annotations.router)
 api_v1.include_router(scores.router)
 api_v1.include_router(templates.router)
 api_v1.include_router(publish.router)
+api_v1.include_router(auto_research.router)

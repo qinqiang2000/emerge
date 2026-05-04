@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     default_provider: str = "openai"  # 'openai' | 'gemini'
     default_model_openai: str = "gpt-4o-2024-08-06"
     default_model_gemini: str = "gemini-2.0-flash"
+    default_model_pro: str = "gemini-3.1-pro-preview"
 
 
 settings = Settings()
