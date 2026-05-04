@@ -311,7 +311,7 @@ Reuse historical Task 11 verbatim. **Do not implement chat mode** (historical Ta
 - Page: `SchemaEditorPage`.
 
 **Tests to write:**
-- `schema_editor.test.tsx`: seed `useSchema.setState({ active: { ...one field... } })`; render; assert field name input is editable; assert lock button visible when not locked.
+- `schema_editor.test.tsx`: seed `useSchema.setState({ active: { ...one field... } })`; render; assert field description textarea is editable; assert lock button visible when not locked.
 
 **Commands to run:**
 - `cd frontend && npm test -- schema_editor`
@@ -320,7 +320,7 @@ Reuse historical Task 11 verbatim. **Do not implement chat mode** (historical Ta
 - `feat(frontend): schema editor form mode with lock/unlock`
 
 **Acceptance criteria:**
-- Field name / description / required all editable; "Save" calls `PATCH /schema`.
+- Field `description` (Textarea) and `required` (Switch) are editable; "Save" calls `PATCH /schema`. **Field `name` and `type` stay read-only in v1** — renaming has migration impact on existing predictions/annotations and is intentionally deferred to v1.1 behind a migration-aware confirm dialog.
 - Lock state is visible in the page header.
 - `GET /lock-status` reason is visible when the schema cannot be locked. The Lock button either disables with the backend reason or surfaces the 409 reason from `POST /lock`; it must not pretend a fresh project can lock immediately.
 - Locked state flips Lock button → Unlock after the backend accepts `POST /lock`; unlocked → Lock after `POST /unlock`.
