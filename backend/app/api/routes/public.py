@@ -15,7 +15,12 @@ from app.models.document import Document, DocumentStatus
 from app.models.project import Project
 from app.schemas.annotation import FeedbackIn
 from app.services.api_key import parse_prefix, verify_api_key
-from app.services.corrections import PredictionScopeError, save_counterexample
+from app.services.corrections import (
+    FeedbackPatchError,
+    PredictionScopeError,
+    apply_feedback_corrections,
+    save_counterexample,
+)
 from app.services.ratelimit import _extract_limit, limiter
 from app.services.storage import save_upload
 
@@ -131,16 +136,62 @@ async def public_feedback(
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
     session: AsyncSession = Depends(get_session),
 ) -> PublicFeedbackOut:
+    """Receive production feedback from API consumers (spec §7.1).
+
+    Accepts either a full `correct_output` array, or partial `corrections`
+    keyed by `entity_index`/`field_path`. Partial corrections are merged
+    onto the original prediction output to form the counterexample's
+    `correct_output`, so callers can patch a single field without knowing
+    the entire schema.
+    """
     project = await _resolve_project(session, api_code)
     await _authenticate_key(session, project.id, x_api_key)
+
+    correct_output = payload.correct_output
+    raw_corrections: list[dict] | None = None
+    if correct_output is None:
+        # Partial path: load the referenced prediction and apply corrections.
+        from app.models.prediction import Prediction as _Pred  # local import to avoid circular
+
+        from sqlalchemy import select as _select
+
+        pred = (
+            await session.execute(_select(_Pred).where(_Pred.id == payload.request_id))
+        ).scalar_one_or_none()
+        if pred is None:
+            raise EmergeError(
+                ErrorCode.VALIDATION_FAILED,
+                status_code=422,
+                message_override=f"prediction {payload.request_id} not found",
+            )
+        raw_corrections = [c.model_dump() for c in (payload.corrections or [])]
+        try:
+            correct_output = apply_feedback_corrections(
+                pred.output or [], raw_corrections
+            )
+        except FeedbackPatchError as exc:
+            raise EmergeError(
+                ErrorCode.VALIDATION_FAILED, status_code=422, message_override=str(exc)
+            ) from exc
+
+    notes = payload.notes
+    if raw_corrections is not None:
+        # Preserve partial-feedback metadata in the Annotation notes for AutoResearch
+        # readability; the structured corrections payload would need a dedicated column
+        # which v1 does not model — string is the most stable carrier today.
+        import json as _json
+
+        suffix = f"\n[partial_feedback]={_json.dumps({'corrections': raw_corrections, 'issue_type': payload.issue_type})}"
+        notes = (notes or "") + suffix
+
     try:
         ann = await save_counterexample(
             session=session,
             project_id=project.id,
             prediction_id=payload.request_id,
-            correct_output=payload.correct_output,
+            correct_output=correct_output,
             user_id=0,
-            notes=payload.notes,
+            notes=notes,
         )
     except PredictionScopeError as exc:
         raise EmergeError(

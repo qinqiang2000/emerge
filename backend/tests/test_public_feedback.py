@@ -97,3 +97,121 @@ async def test_feedback_after_unpublish_returns_403(client, db_session, monkeypa
         headers={"X-Api-Key": key},
     )
     assert fb.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_public_feedback_accepts_partial_field_corrections(
+    client, db_session, app, tmp_path, monkeypatch
+):
+    """Partial feedback: client patches single fields without resending full output."""
+    api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
+
+    fake = FakeProvider(canned=[[{"shop_name": "WRONG", "total": 1000}]])
+    app.dependency_overrides[get_provider_dep] = lambda: fake
+    extract_resp = await client.post(
+        f"/extract/{api_code}",
+        files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
+        headers={"X-Api-Key": key},
+    )
+    pred_id = extract_resp.json()["prediction_id"]
+
+    fb = await client.post(
+        f"/extract/{api_code}/feedback",
+        json={
+            "request_id": pred_id,
+            "corrections": [
+                {
+                    "entity_index": 0,
+                    "field_path": "total",
+                    "correct_value": 1234,
+                    "comment": "model picked subtotal",
+                }
+            ],
+        },
+        headers={"X-Api-Key": key},
+    )
+    assert fb.status_code in (200, 201), fb.text
+    rows = (
+        await db_session.execute(
+            select(Annotation).where(Annotation.role == AnnotationRole.COUNTEREXAMPLE.value)
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    # Merged output: original WRONG/1000 patched to 1234.
+    assert rows[0].output == [{"shop_name": "WRONG", "total": 1234}]
+
+
+@pytest.mark.asyncio
+async def test_public_feedback_partial_supports_nested_paths(
+    client, db_session, app, tmp_path, monkeypatch
+):
+    api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
+
+    fake = FakeProvider(canned=[[{"line_items": [{"name": "A", "price": 1}, {"name": "B", "price": 2}]}]])
+    app.dependency_overrides[get_provider_dep] = lambda: fake
+    extract_resp = await client.post(
+        f"/extract/{api_code}",
+        files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
+        headers={"X-Api-Key": key},
+    )
+    pred_id = extract_resp.json()["prediction_id"]
+
+    fb = await client.post(
+        f"/extract/{api_code}/feedback",
+        json={
+            "request_id": pred_id,
+            "corrections": [
+                {"entity_index": 0, "field_path": "line_items[1].price", "correct_value": 99}
+            ],
+        },
+        headers={"X-Api-Key": key},
+    )
+    assert fb.status_code in (200, 201), fb.text
+    rows = (
+        await db_session.execute(
+            select(Annotation).where(Annotation.role == AnnotationRole.COUNTEREXAMPLE.value)
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].output[0]["line_items"][1]["price"] == 99
+
+
+@pytest.mark.asyncio
+async def test_public_feedback_partial_invalid_path_returns_422(
+    client, db_session, app, tmp_path, monkeypatch
+):
+    api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
+
+    fake = FakeProvider(canned=[[{"total": 1}]])
+    app.dependency_overrides[get_provider_dep] = lambda: fake
+    extract_resp = await client.post(
+        f"/extract/{api_code}",
+        files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
+        headers={"X-Api-Key": key},
+    )
+    pred_id = extract_resp.json()["prediction_id"]
+
+    fb = await client.post(
+        f"/extract/{api_code}/feedback",
+        json={
+            "request_id": pred_id,
+            "corrections": [
+                {"entity_index": 5, "field_path": "total", "correct_value": 1}
+            ],
+        },
+        headers={"X-Api-Key": key},
+    )
+    assert fb.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_public_feedback_requires_full_or_partial(
+    client, db_session, monkeypatch, tmp_path
+):
+    api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
+    fb = await client.post(
+        f"/extract/{api_code}/feedback",
+        json={"request_id": 1},
+        headers={"X-Api-Key": key},
+    )
+    assert fb.status_code == 422
