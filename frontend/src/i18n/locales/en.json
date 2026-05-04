@@ -13,7 +13,14 @@
     "create_dialog_title": "What kind of document do you want to extract?",
     "create_dialog_hint": "Describe it in your own words…",
     "create_browse_templates": "Browse 5 builtin templates",
-    "create_empty_project": "Empty project"
+    "create_empty_project": "Empty project",
+    "list_placeholder": "Project list coming soon."
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
   },
   "documents": {
     "title": "Documents",

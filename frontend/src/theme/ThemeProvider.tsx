@@ -1,13 +1,6 @@
-import { createContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-export type Theme = "light" | "dark" | "system";
-
-type Ctx = { theme: Theme; setTheme: (t: Theme) => void };
-
-export const ThemeContext = createContext<Ctx>({
-  theme: "system",
-  setTheme: () => {},
-});
+import { ThemeContext, type Theme } from "./theme-context";
 
 function applyResolved(theme: Theme) {
   const resolved =
