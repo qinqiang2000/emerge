@@ -19,7 +19,12 @@ class Project(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
+    project_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="extraction", server_default="extraction"
+    )
     template_id: Mapped[int | None] = mapped_column(nullable=True)  # FK added in R7
     active_version_id: Mapped[int | None] = mapped_column(nullable=True)  # FK added in R3
+    # Public API serves this version; spec §7.2: editing/AutoResearch never auto-promote.
+    published_version_id: Mapped[int | None] = mapped_column(nullable=True)
     api_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     api_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
