@@ -5,6 +5,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { DocumentListPage } from "./pages/DocumentList";
 import { ProjectCreatePage } from "./pages/ProjectCreate";
 import { ProjectListPage } from "./pages/ProjectList";
+import { SchemaEditorPage } from "./pages/SchemaEditor";
 import { StudioPage } from "./pages/Studio";
 import { LoginPage } from "./pages/Login";
 import { RegisterPage } from "./pages/Register";
@@ -61,6 +62,14 @@ export default function App() {
               element={
                 <AuthGate>
                   <StudioPage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/schema"
+              element={
+                <AuthGate>
+                  <SchemaEditorPage />
                 </AuthGate>
               }
             />

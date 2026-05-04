@@ -62,11 +62,20 @@
     "preview_placeholder_hint": "Real PDF preview lands in v1.1; for now use the entity editor on the right."
   },
   "schema": {
+    "title": "Schema",
     "tab_form": "Form",
     "tab_chat": "Chat",
     "lock_status_blocked": "Need at least 2 saved corrections.",
     "lock_button": "Lock schema",
-    "unlock_button": "Unlock"
+    "unlock_button": "Unlock",
+    "loading": "Loading schema…",
+    "empty": "No active version found for this project.",
+    "no_fields": "No fields defined yet. Add fields to start extracting.",
+    "locked_badge": "Locked",
+    "unlocked_badge": "Draft",
+    "field_description_label": "Description",
+    "field_required_label": "Required",
+    "notes_label": "Global notes"
   },
   "auto_research": {
     "run": "Run AutoResearch",
