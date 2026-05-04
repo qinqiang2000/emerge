@@ -58,7 +58,6 @@
     "save_correction": "Save correction",
     "loading": "Loading document…",
     "empty": "Document not loaded.",
-    "pages": "pages",
     "no_entities": "No entities extracted yet.",
     "entity_label": "Entity",
     "preview_placeholder_title": "Document preview",

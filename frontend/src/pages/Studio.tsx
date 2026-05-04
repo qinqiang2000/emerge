@@ -85,7 +85,7 @@ export function StudioPage() {
         <div>
           <h1 className="text-xl font-semibold text-fg-primary">{doc.filename}</h1>
           <p className="text-xs text-fg-muted">
-            {doc.mime_type} · {doc.page_count} {t("studio.pages")} · {doc.status}
+            {doc.mime_type} · {doc.status}
           </p>
         </div>
         <Button
@@ -108,9 +108,7 @@ export function StudioPage() {
             {t("studio.preview_placeholder_title")}
           </p>
           <p className="mt-2 text-sm text-fg-primary">{doc.filename}</p>
-          <p className="text-xs text-fg-muted">
-            {doc.mime_type} · {doc.page_count} {t("studio.pages")}
-          </p>
+          <p className="text-xs text-fg-muted">{doc.mime_type}</p>
           <p className="mt-2 text-xs text-fg-muted">
             {t("studio.preview_placeholder_hint")}
           </p>
