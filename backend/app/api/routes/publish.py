@@ -11,7 +11,7 @@ from app.models.api_key import ApiKey
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.user import User
-from app.schemas.api_key import ApiKeyIn, ApiKeyOnceOut, ApiKeyOut, PublishIn
+from app.schemas.api_key import ApiKeyIn, ApiKeyOnceOut, ApiKeyOut, PublishIn, RollbackIn
 from app.schemas.project import ProjectOut
 from app.services.api_key import generate_api_key
 
@@ -25,23 +25,34 @@ async def publish(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ) -> ProjectOut:
+    """Publish target ProjectVersion to the public API.
+
+    Spec §7.2: editing/AutoResearch never auto-promote. Public API serves
+    `project.published_version_id`, which this route is the only writer for.
+    Defaults to `project.active_version_id` if no explicit target is given.
+    """
     p = await _project_or_404(session, project_id, workspace_id)
-    if p.active_version_id is None:
+    target_id = payload.project_version_id or p.active_version_id
+    if target_id is None:
         raise EmergeError(
             ErrorCode.CONFLICT,
             status_code=409,
             message_override="Project has no active version.",
         )
     v = (
-        await session.execute(
-            select(ProjectVersion).where(ProjectVersion.id == p.active_version_id)
+        await session.execute(select(ProjectVersion).where(ProjectVersion.id == target_id))
+    ).scalar_one_or_none()
+    if v is None or v.project_id != p.id:
+        raise EmergeError(
+            ErrorCode.NOT_FOUND,
+            status_code=404,
+            message_override="Target version not found in this project.",
         )
-    ).scalar_one()
     if not v.locked:
         raise EmergeError(
             ErrorCode.CONFLICT,
             status_code=409,
-            message_override="Active version must be locked before publishing.",
+            message_override="Target version must be locked before publishing.",
         )
     clash = (
         await session.execute(
@@ -60,7 +71,49 @@ async def publish(
         )
 
     p.api_code = payload.api_code
+    p.published_version_id = v.id
     p.api_published_at = datetime.now(tz=timezone.utc)
+    await session.commit()
+    await session.refresh(p)
+    return ProjectOut.model_validate(p)
+
+
+@router.post("/rollback", response_model=ProjectOut)
+async def rollback(
+    project_id: int,
+    payload: RollbackIn,
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+) -> ProjectOut:
+    """Roll back the public API to a previous locked ProjectVersion.
+
+    Only mutates `published_version_id`; Lab `active_version_id` is untouched.
+    """
+    p = await _project_or_404(session, project_id, workspace_id)
+    if p.api_published_at is None:
+        raise EmergeError(
+            ErrorCode.CONFLICT,
+            status_code=409,
+            message_override="Project must be published before rollback.",
+        )
+    v = (
+        await session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == payload.project_version_id)
+        )
+    ).scalar_one_or_none()
+    if v is None or v.project_id != p.id:
+        raise EmergeError(
+            ErrorCode.NOT_FOUND,
+            status_code=404,
+            message_override="Target version not found in this project.",
+        )
+    if not v.locked:
+        raise EmergeError(
+            ErrorCode.CONFLICT,
+            status_code=409,
+            message_override="Rollback target must be locked.",
+        )
+    p.published_version_id = v.id
     await session.commit()
     await session.refresh(p)
     return ProjectOut.model_validate(p)

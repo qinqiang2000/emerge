@@ -8,6 +8,8 @@ _API_CODE = re.compile(r"^[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$|^[a-z0-9]$")
 
 class PublishIn(BaseModel):
     api_code: str
+    # Optional explicit version; defaults to project.active_version_id at publish time.
+    project_version_id: int | None = None
 
     @field_validator("api_code")
     @classmethod
@@ -15,6 +17,10 @@ class PublishIn(BaseModel):
         if not _API_CODE.match(v):
             raise ValueError("api_code must be lowercase alphanumeric with hyphens, 1-64 chars, no consecutive hyphens")
         return v
+
+
+class RollbackIn(BaseModel):
+    project_version_id: int
 
 
 class ApiKeyIn(BaseModel):
