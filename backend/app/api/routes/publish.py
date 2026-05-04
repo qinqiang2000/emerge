@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +12,10 @@ from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.user import User
 from app.schemas.api_key import ApiKeyIn, ApiKeyOnceOut, ApiKeyOut, PublishIn, RollbackIn
+from app.schemas.contract_diff import ContractDiffOut
 from app.schemas.project import ProjectOut
 from app.services.api_key import generate_api_key
+from app.services.contract_diff import diff_schema_snapshots
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["publish"])
 
@@ -134,6 +136,50 @@ async def unpublish(
     await session.commit()
     await session.refresh(p)
     return ProjectOut.model_validate(p)
+
+
+@router.get("/contract-diff", response_model=ContractDiffOut)
+async def contract_diff(
+    project_id: int,
+    from_version_id: int | None = Query(default=None),
+    to_version_id: int | None = Query(default=None),
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+) -> ContractDiffOut:
+    """Diff two ProjectVersion schema_snapshots (spec §7.3).
+
+    Defaults: from = `published_version_id` (empty schema if never published),
+    to = `active_version_id`. Both versions must belong to the project.
+    """
+    p = await _project_or_404(session, project_id, workspace_id)
+    if from_version_id is None:
+        from_version_id = p.published_version_id
+    if to_version_id is None:
+        to_version_id = p.active_version_id
+
+    async def _load(vid: int | None) -> tuple[int | None, list[dict]]:
+        if vid is None:
+            return None, []
+        v = (
+            await session.execute(
+                select(ProjectVersion).where(ProjectVersion.id == vid)
+            )
+        ).scalar_one_or_none()
+        if v is None or v.project_id != p.id:
+            raise EmergeError(
+                ErrorCode.NOT_FOUND,
+                status_code=404,
+                message_override="Version not found in this project.",
+            )
+        return v.id, list(v.schema_snapshot or [])
+
+    from_id, from_snapshot = await _load(from_version_id)
+    to_id, to_snapshot = await _load(to_version_id)
+
+    out = diff_schema_snapshots(from_snapshot, to_snapshot)
+    out.from_version_id = from_id
+    out.to_version_id = to_id
+    return out
 
 
 @router.post(
