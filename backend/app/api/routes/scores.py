@@ -20,6 +20,7 @@ from app.engine.judge import JudgeProvider, get_judge_provider, run_judge
 from app.models.document import Document
 from app.models.judge_calibration import JudgeCalibration
 from app.models.prediction import Prediction
+from app.schemas.readiness import APIReadinessOut
 from app.schemas.score import (
     CalibrationOut,
     JudgeRunOut,
@@ -27,9 +28,26 @@ from app.schemas.score import (
     ReviewItemOut,
     ReviewQueueOut,
 )
+from app.services.readiness import build_readiness
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["scores"])
 
+
+
+@router.get("/readiness", response_model=APIReadinessOut)
+async def get_readiness(
+    project_id: int,
+    workspace_id: int = Depends(current_workspace_id),
+    session: AsyncSession = Depends(get_session),
+) -> APIReadinessOut:
+    """Product-facing API Readiness summary (spec §4.5).
+
+    Wraps quality / evidence / regression / maturity into a checklist that
+    the API Console gates publish on; explicitly avoids collapsing trust
+    into a single composite score.
+    """
+    await _project_or_404(session, project_id, workspace_id)
+    return await build_readiness(project_id=project_id, session=session)
 
 
 @router.get("/score", response_model=ProjectScoreOut)
