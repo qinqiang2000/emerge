@@ -52,7 +52,14 @@
   "studio": {
     "schema_editor": "Schema editor",
     "ask_researcher": "Ask researcher",
-    "save_correction": "Save correction"
+    "save_correction": "Save correction",
+    "loading": "Loading document…",
+    "empty": "Document not loaded.",
+    "pages": "pages",
+    "no_entities": "No entities extracted yet.",
+    "entity_label": "Entity",
+    "preview_placeholder_title": "Document preview",
+    "preview_placeholder_hint": "Real PDF preview lands in v1.1; for now use the entity editor on the right."
   },
   "schema": {
     "tab_form": "Form",
