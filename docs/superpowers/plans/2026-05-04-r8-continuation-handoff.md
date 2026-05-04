@@ -32,7 +32,7 @@ Latest confirmed state:
 
 ```text
 branch: r8-productization-mvp
-HEAD:   331a821 chore(frontend): fix R8.0 lint and i18n hygiene
+HEAD:   0552f74 test(frontend): stabilize theme localStorage tests
 status: clean
 ```
 
@@ -49,6 +49,7 @@ dbbdcdc R8.0 i18n                        in r8-productization-mvp, not in main
 4538284 R8.0 axios client                in r8-productization-mvp, not in main
 4a269bd R8.0 auth gate                   in r8-productization-mvp, not in main
 331a821 R8.0.1 lint/i18n hygiene         in r8-productization-mvp, not in main
+0552f74 pre-Prompt2 theme test stabilization in r8-productization-mvp, not in main
 ```
 
 Completed baseline:
@@ -63,6 +64,7 @@ dbbdcdc feat(frontend): i18n setup with English catalog and useT hook
 4538284 feat(frontend): axios client + EmergeError envelope decoder
 4a269bd feat(frontend): auth store + login/register pages + auth gate
 331a821 chore(frontend): fix R8.0 lint and i18n hygiene
+0552f74 test(frontend): stabilize theme localStorage tests
 ```
 
 Known R7.5 backend baseline remains accepted:
@@ -76,37 +78,25 @@ Alembic empty DB upgrade to head: passed
 
 ## 2. R8.0.1 verification note before Prompt 2
 
-`331a821` appears to have fixed the original lint issue:
+`331a821` fixed the original lint issue and `0552f74` stabilized the Vitest/happy-dom `localStorage` setup that had caused `theme.test.tsx` to fail under this Node runtime.
+
+Verified after `0552f74`:
 
 ```text
 cd frontend && npm run lint: passed
+cd frontend && npm test: 4 files / 9 tests passed
+cd frontend && npm run build: passed
 ```
 
-However, this Hermes session observed a fresh test failure after that commit:
+Root cause of the test issue: Node's experimental global `localStorage` was present but not a full DOM `Storage` implementation (`clear` was missing and i18next-browser-languagedetector emitted a `--localstorage-file` warning). `frontend/src/test-setup.ts` now installs a deterministic in-memory `Storage` mock on both `window.localStorage` and `globalThis.localStorage` before dynamically importing `@/i18n`.
 
-```text
-cd frontend && npm test: failed
-src/__tests__/theme.test.tsx:
-  TypeError: localStorage.clear is not a function
-Node/Vitest warning:
-  `--localstorage-file` was provided without a valid path
-```
-
-Before starting Prompt 2 / R8.1, run:
+Still run the normal health checks before starting Prompt 2:
 
 ```bash
 cd /Users/qinqiang02/colab/codespace/ai/emerge/frontend
 npm run lint
 npm test
 npm run build
-```
-
-If the theme test failure persists, fix it as a tiny pre-Prompt-2 stabilization commit before product work. Likely area: `frontend/src/test-setup.ts`, `happy-dom`, and Node's global `localStorage` shadowing. The fix should make tests use a valid DOM storage implementation or a deterministic mock with `getItem`, `setItem`, `removeItem`, and `clear`. Do not weaken the theme persistence behavior.
-
-Suggested commit if needed:
-
-```text
-test(frontend): stabilize theme localStorage tests
 ```
 
 ---
