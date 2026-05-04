@@ -38,7 +38,8 @@ export function ApiConsolePage() {
   const unpublish = useProjects((s) => s.unpublish);
   const rollback = useProjects((s) => s.rollback);
 
-  const [apiCodeDraft, setApiCodeDraft] = useState("");
+  const [activateApiCode, setActivateApiCode] = useState("");
+  const [renameApiCode, setRenameApiCode] = useState("");
   const [rollbackTarget, setRollbackTarget] = useState<string>("");
   const [revealedKey, setRevealedKey] = useState<ApiKeyOnce | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -52,7 +53,10 @@ export function ApiConsolePage() {
   }, [projectId, loadOne, loadVersions, loadContractDiff, listKeys]);
 
   useEffect(() => {
-    if (project?.api_code) setApiCodeDraft(project.api_code);
+    if (project?.api_code) {
+      setActivateApiCode(project.api_code);
+      setRenameApiCode(project.api_code);
+    }
   }, [project?.api_code]);
 
   const subnav = Number.isFinite(projectId) ? (
@@ -96,18 +100,24 @@ export function ApiConsolePage() {
     if (!project || !activeIsLocked) return;
     setActionError(null);
     try {
-      await publish(projectId, apiCodeDraft || project.api_code || "", project.active_version_id ?? undefined);
+      await publish(
+        projectId,
+        activateApiCode,
+        project.active_version_id ?? undefined,
+      );
     } catch (e) {
       setActionError(emergeMessage(e));
     }
   }
 
   async function handleRename() {
-    if (!project) return;
+    if (!project || !project.published_version_id) return;
     setActionError(null);
     try {
-      const targetVersionId = project.published_version_id ?? project.active_version_id ?? undefined;
-      await publish(projectId, apiCodeDraft, targetVersionId);
+      // Spec §7.2: rename of an already-published project must keep
+      // published_version_id unchanged. Pass it explicitly so the backend
+      // does not default to active_version_id.
+      await publish(projectId, renameApiCode, project.published_version_id);
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -208,29 +218,48 @@ export function ApiConsolePage() {
             <label className="flex items-center gap-2 text-sm text-fg-primary">
               <span>{t("api_console.api_code_label")}</span>
               <Input
-                value={apiCodeDraft}
-                onChange={(e) => setApiCodeDraft(e.target.value)}
-                placeholder="japan-receipts"
-                aria-label={t("api_console.api_code_label")}
+                value={activateApiCode}
+                onChange={(e) => setActivateApiCode(e.target.value)}
+                placeholder={t("api_console.api_code_placeholder")}
+                aria-label={t("api_console.activate_api_code_aria")}
               />
             </label>
             <Button
-              disabled={!activeIsLocked || !apiCodeDraft}
+              disabled={!activeIsLocked || !activateApiCode}
               onClick={() => void handleActivate()}
             >
               {t("api_console.activate_button")}
             </Button>
-            {isPublished ? (
+          </div>
+        </section>
+
+        {isPublished ? (
+          <section className="space-y-3 rounded-md border border-border-default bg-bg-elevated p-4">
+            <h2 className="text-sm font-semibold text-fg-primary">
+              {t("api_console.rename_section")}
+            </h2>
+            <p className="text-xs text-fg-muted">
+              {t("api_console.rename_hint")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-fg-primary">
+                <span>{t("api_console.api_code_label")}</span>
+                <Input
+                  value={renameApiCode}
+                  onChange={(e) => setRenameApiCode(e.target.value)}
+                  aria-label={t("api_console.rename_api_code_aria")}
+                />
+              </label>
               <Button
                 variant="secondary"
-                disabled={!apiCodeDraft || apiCodeDraft === project.api_code}
+                disabled={!renameApiCode || renameApiCode === project.api_code}
                 onClick={() => void handleRename()}
               >
                 {t("api_console.rename_button")}
               </Button>
-            ) : null}
-          </div>
-        </section>
+            </div>
+          </section>
+        ) : null}
 
         {isPublished && lockedNonPublishedVersions.length > 0 ? (
           <section className="space-y-2 rounded-md border border-border-default bg-bg-elevated p-4">
@@ -485,6 +514,3 @@ function FeedbackExamplePanel() {
   );
 }
 
-// Suppress eslint unused for emergeMessage when used. Keeping local helper
-// rather than promoting cross-store yet (hygiene tail #34).
-void emergeMessage;
