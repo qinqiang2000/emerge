@@ -62,6 +62,13 @@ async def extract_document(
         with open(d.file_path, "rb") as fh:
             file_bytes = fh.read()
         result = await provider.extract(request, file_bytes=file_bytes, mime_type=d.mime_type)
+        # Field-level evidence is optional; provider may surface it on raw_response.
+        # Spec §3.2: page / quote / rationale / source_text_hash only — never bbox.
+        evidence = None
+        if result.raw_response and isinstance(result.raw_response, dict):
+            ev = result.raw_response.get("per_field_evidence")
+            if isinstance(ev, dict):
+                evidence = ev
         pred = Prediction(
             document_id=d.id,
             project_version_id=v.id,
@@ -69,6 +76,7 @@ async def extract_document(
             prompt_hash=prompt_hash,
             output=result.output,
             per_field_confidence={},
+            per_field_evidence=evidence,
             tokens_used=result.tokens_used,
             latency_ms=result.latency_ms,
             cost_estimate=result.cost_estimate,

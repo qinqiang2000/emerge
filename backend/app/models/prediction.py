@@ -30,6 +30,9 @@ class Prediction(Base, TimestampMixin):
 
     output: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     per_field_confidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Field-level evidence: { entity_idx: { field_name: { page?, quote?, rationale?, source_text_hash? } } }
+    # Spec §3.2 hard rule: NO bbox / coordinates / polygons / regions / spans.
+    per_field_evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
