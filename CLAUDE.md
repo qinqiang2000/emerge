@@ -4,6 +4,7 @@ Software 3.0 文档 API 平台（v1 只实现 ExtractionProject）。**Slogan**:
 
 - Spec (single source of truth): `docs/superpowers/specs/2026-05-02-overall-design.md`
 - 实施 plan: `docs/superpowers/plans/2026-05-03-r{1..8}-*.md` + `2026-05-04-r7_5-productization-release-readiness.md`；按 R1→R2→R3 串行；R4–R7 可并行；R7.5 在 R8 publish/readiness UI 前落
+- **R8 当前执行计划**: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md` (overlay)。原 `2026-05-03-r8-ui.md` 保留为完整 UI 历史参考；overlay 复用其 Tasks 1–6 作为 frontend foundation，并在 R8.0–R8.7 phases 内收敛到 productization MVP（API Console / Readiness / Review Inbox / Field Evidence / Partial Feedback / E2E）。冲突处以 overlay 为准。
 - Milestone: M1 = R1+R2+R3 walking skeleton; M2 = R4+R5; M3 = R6; M4 = R7+R7.5+R8
 
 ## Collaboration
@@ -31,6 +32,7 @@ Software 3.0 文档 API 平台（v1 只实现 ExtractionProject）。**Slogan**:
 - **AutoResearch 永不自动 promote**。output 是候选 ProjectVersion，user 必须显式 activate (spec §5.1)
 - **Counterexample 永不进 runtime prompt**。仅作 AutoResearch 回归测试集 (spec §1)
 - **Public API 读 Project.published_version_id，不读 active_version_id**：active 是 Lab/editor 当前版本；published 才是生产公开 API 版本。编辑/AutoResearch 激活不得自动影响 public API，必须显式 Activate for API (spec §7.2)
+- **不读取/打印/提交 secrets**：不要读取或输出 `backend/.env`、provider key、JWT、API key 明文、token/password；前端示例只使用 `EMERGE_API_KEY` 等占位符。API key 明文只允许在 create-key 响应后的 one-time reveal modal 中短暂存在。
 
 ## 仓库布局
 
