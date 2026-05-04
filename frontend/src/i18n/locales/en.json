@@ -90,6 +90,14 @@
   "publish": {
     "publish_button": "Publish API",
     "key_modal_title": "API key — copy now (shown only once)",
+    "key_modal_warning": "This key is shown only once. Save it in your secrets manager now — you will not be able to see it again.",
+    "key_modal_name_label": "Name",
+    "key_modal_plaintext_label": "API key plaintext",
+    "key_modal_copy_aria": "Copy API key to clipboard",
+    "key_modal_copied": "Copied",
+    "key_modal_ack_label": "I have copied this key to a safe place.",
+    "key_modal_ack_aria": "I have copied this key",
+    "key_modal_dismiss": "Done",
     "manage_keys": "Manage API keys"
   },
   "errors": {
@@ -108,6 +116,7 @@
     "delete": "Delete",
     "loading": "Loading…",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "copy": "Copy"
   }
 }
