@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
@@ -43,18 +44,28 @@ export function SchemaEditorPage() {
     }
   }, [active]);
 
+  const subnav = Number.isFinite(projectId) ? (
+    <ProjectSubNav projectId={projectId} />
+  ) : null;
+
   if (loading && active === null) {
     return (
-      <main className="mx-auto max-w-4xl p-6">
-        <p className="text-fg-muted">{t("schema.loading")}</p>
-      </main>
+      <>
+        {subnav}
+        <main className="mx-auto max-w-4xl p-6">
+          <p className="text-fg-muted">{t("schema.loading")}</p>
+        </main>
+      </>
     );
   }
   if (active === null) {
     return (
-      <main className="mx-auto max-w-4xl p-6">
-        <p className="text-fg-muted">{t("schema.empty")}</p>
-      </main>
+      <>
+        {subnav}
+        <main className="mx-auto max-w-4xl p-6">
+          <p className="text-fg-muted">{t("schema.empty")}</p>
+        </main>
+      </>
     );
   }
 
@@ -74,6 +85,8 @@ export function SchemaEditorPage() {
   }
 
   return (
+    <>
+    {subnav}
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <header className="flex items-center justify-between">
         <div>
@@ -178,5 +191,6 @@ export function SchemaEditorPage() {
         </Button>
       </footer>
     </main>
+    </>
   );
 }

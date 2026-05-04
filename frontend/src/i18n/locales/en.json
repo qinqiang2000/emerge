@@ -1,4 +1,8 @@
 {
+  "nav": {
+    "documents": "Documents",
+    "schema": "Schema"
+  },
   "auth": {
     "login_title": "Sign in to emerge",
     "register_title": "Create your emerge workspace",

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { Button } from "@/components/ui/Button";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/Table";
 import { useT } from "@/i18n/useT";
@@ -40,7 +41,11 @@ export function DocumentListPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl space-y-4 p-6">
+    <>
+      {Number.isFinite(projectId) ? (
+        <ProjectSubNav projectId={projectId} />
+      ) : null}
+      <main className="mx-auto max-w-5xl space-y-4 p-6">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-fg-primary">
           {t("documents.title")}
@@ -107,6 +112,7 @@ export function DocumentListPage() {
           </TBody>
         </Table>
       )}
-    </main>
+      </main>
+    </>
   );
 }

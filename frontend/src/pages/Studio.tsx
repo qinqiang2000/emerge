@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 
+import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/i18n/useT";
@@ -51,22 +52,34 @@ export function StudioPage() {
     setDraft(next);
   }
 
+  const subnav = Number.isFinite(projectId) ? (
+    <ProjectSubNav projectId={projectId} />
+  ) : null;
+
   if (loading && doc === null) {
     return (
-      <main className="mx-auto max-w-6xl p-6">
-        <p className="text-fg-muted">{t("studio.loading")}</p>
-      </main>
+      <>
+        {subnav}
+        <main className="mx-auto max-w-6xl p-6">
+          <p className="text-fg-muted">{t("studio.loading")}</p>
+        </main>
+      </>
     );
   }
   if (doc === null) {
     return (
-      <main className="mx-auto max-w-6xl p-6">
-        <p className="text-fg-muted">{t("studio.empty")}</p>
-      </main>
+      <>
+        {subnav}
+        <main className="mx-auto max-w-6xl p-6">
+          <p className="text-fg-muted">{t("studio.empty")}</p>
+        </main>
+      </>
     );
   }
 
   return (
+    <>
+    {subnav}
     <main className="mx-auto max-w-6xl space-y-4 p-6">
       <header className="flex items-center justify-between">
         <div>
@@ -131,6 +144,7 @@ export function StudioPage() {
         </section>
       </div>
     </main>
+    </>
   );
 }
 
