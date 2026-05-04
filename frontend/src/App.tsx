@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { ThemeToggle } from "./components/ThemeToggle";
-import { useT } from "./i18n/useT";
+import { ProjectListPage } from "./pages/ProjectList";
 import { LoginPage } from "./pages/Login";
 import { RegisterPage } from "./pages/Register";
 import { useAuth } from "./stores/auth";
@@ -11,11 +11,6 @@ import { ThemeProvider } from "./theme/ThemeProvider";
 function AuthGate({ children }: { children: ReactNode }) {
   const token = useAuth((s) => s.token);
   return token ? <>{children}</> : <Navigate to="/login" replace />;
-}
-
-function ProjectListPlaceholder() {
-  const t = useT();
-  return <div className="p-4">{t("projects.list_placeholder")}</div>;
 }
 
 export default function App() {
@@ -38,7 +33,7 @@ export default function App() {
               path="/projects"
               element={
                 <AuthGate>
-                  <ProjectListPlaceholder />
+                  <ProjectListPage />
                 </AuthGate>
               }
             />

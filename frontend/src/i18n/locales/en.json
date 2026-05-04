@@ -14,7 +14,14 @@
     "create_dialog_hint": "Describe it in your own words…",
     "create_browse_templates": "Browse 5 builtin templates",
     "create_empty_project": "Empty project",
-    "list_placeholder": "Project list coming soon."
+    "list_empty": "No projects yet. Create your first project to get started.",
+    "list_loading": "Loading projects…",
+    "col_name": "Name",
+    "col_status": "Status",
+    "col_api_code": "API code",
+    "col_created_at": "Created",
+    "published_badge": "Published",
+    "draft_badge": "Draft"
   },
   "theme": {
     "label": "Theme",
