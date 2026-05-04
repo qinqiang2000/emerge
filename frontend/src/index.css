@@ -16,6 +16,7 @@
   --status-success: #10b981;
   --status-warning: #f59e0b;
   --status-error: #ef4444;
+  --overlay: #0f172a;
 
   color: var(--fg-primary);
   background-color: var(--bg-surface);
@@ -36,4 +37,5 @@ html.dark {
   --status-success: #10b981;
   --status-warning: #f59e0b;
   --status-error: #f87171;
+  --overlay: #000000;
 }

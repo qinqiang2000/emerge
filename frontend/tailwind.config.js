@@ -18,6 +18,7 @@ export default {
         "status-success": "var(--status-success)",
         "status-warning": "var(--status-warning)",
         "status-error": "var(--status-error)",
+        overlay: "var(--overlay)",
       },
       borderRadius: { sm: "4px", md: "6px", lg: "8px" },
     },
