@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { ThemeToggle } from "./components/ThemeToggle";
+import { ProjectCreatePage } from "./pages/ProjectCreate";
 import { ProjectListPage } from "./pages/ProjectList";
 import { LoginPage } from "./pages/Login";
 import { RegisterPage } from "./pages/Register";
@@ -34,6 +35,14 @@ export default function App() {
               element={
                 <AuthGate>
                   <ProjectListPage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/new"
+              element={
+                <AuthGate>
+                  <ProjectCreatePage />
                 </AuthGate>
               }
             />

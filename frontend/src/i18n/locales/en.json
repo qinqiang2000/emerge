@@ -12,7 +12,7 @@
     "create_button": "New project",
     "create_dialog_title": "What kind of document do you want to extract?",
     "create_dialog_hint": "Describe it in your own words…",
-    "create_browse_templates": "Browse 5 builtin templates",
+    "create_browse_templates": "Pick a builtin template",
     "create_empty_project": "Empty project",
     "list_empty": "No projects yet. Create your first project to get started.",
     "list_loading": "Loading projects…",
@@ -21,7 +21,12 @@
     "col_api_code": "API code",
     "col_created_at": "Created",
     "published_badge": "Published",
-    "draft_badge": "Draft"
+    "draft_badge": "Draft",
+    "name_label": "Project name",
+    "name_placeholder": "e.g. Japan receipts Q3",
+    "nl_placeholder_hint": "Natural-language onboarding lands in v1.1. For now, name your project and pick a template or start empty.",
+    "templates_empty": "No builtin templates available yet.",
+    "empty_project_hint": "Start with a blank schema and add fields yourself."
   },
   "theme": {
     "label": "Theme",
