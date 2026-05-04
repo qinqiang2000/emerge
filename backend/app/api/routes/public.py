@@ -33,9 +33,12 @@ class PublicFeedbackOut(BaseModel):
 
 
 async def _resolve_project(session: AsyncSession, api_code: str) -> Project:
-    """Live read per spec §7.2 — never cache, never version-pin.
+    """Resolve project by api_code and serve its `published_version_id`.
 
-    Spec §7 distinguishes 404 (unknown api_code) from 403 (known but unpublished).
+    Spec §7.2: public API only serves the explicitly published version, never
+    `active_version_id`. Editing/AutoResearch must not change production by
+    accident. 404 distinguishes unknown api_code; 403 distinguishes paused or
+    missing-published-pointer projects.
     """
     p = (
         await session.execute(
@@ -44,7 +47,7 @@ async def _resolve_project(session: AsyncSession, api_code: str) -> Project:
     ).scalar_one_or_none()
     if p is None:
         raise EmergeError(ErrorCode.NOT_FOUND, status_code=404)
-    if p.api_published_at is None:
+    if p.api_published_at is None or p.published_version_id is None:
         raise EmergeError(ErrorCode.FORBIDDEN, status_code=403)
     return p
 
@@ -104,7 +107,12 @@ async def public_extract(
     await session.refresh(doc)
 
     try:
-        pred = await extract_document(doc.id, session=session, provider=provider)
+        pred = await extract_document(
+            doc.id,
+            session=session,
+            provider=provider,
+            project_version_id=project.published_version_id,
+        )
     except ValueError as exc:
         raise EmergeError(ErrorCode.CONFLICT, status_code=409, message_override=str(exc)) from exc
     return PublicExtractOut(

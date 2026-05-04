@@ -93,3 +93,79 @@ async def test_extract_with_revoked_key_401(client, db_session, app, tmp_path, m
         headers={"X-Api-Key": key},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_public_extract_uses_published_version_not_active(
+    client, db_session, app, tmp_path, monkeypatch
+):
+    """Public API serves published_version_id even when Lab moves to a new
+    active version (spec §7.2)."""
+    from app.models.project import Project
+    from app.models.project_version import ProjectVersion, VersionSource
+
+    api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
+    proj = (
+        await db_session.execute(select(Project).where(Project.api_code == api_code))
+    ).scalar_one()
+    published_version_id = proj.published_version_id
+    assert published_version_id is not None
+
+    # Add a new active version (different schema, unrelated to public API).
+    parent = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == proj.active_version_id)
+        )
+    ).scalar_one()
+    new_active = ProjectVersion(
+        project_id=proj.id,
+        parent_version_id=parent.id,
+        version_number=parent.version_number + 1,
+        schema_snapshot=[{"name": "different", "type": "string", "description": "x"}],
+        global_notes_snapshot="",
+        model_id_snapshot="m",
+        counterexample_ids=parent.counterexample_ids,
+        source=VersionSource.USER_EDIT.value,
+        source_metadata={},
+        locked=False,
+        created_by=parent.created_by,
+    )
+    db_session.add(new_active)
+    await db_session.flush()
+    proj.active_version_id = new_active.id
+    await db_session.commit()
+    assert proj.active_version_id != proj.published_version_id
+
+    fake = FakeProvider(canned=[[{"shop_name": "ABC"}]])
+    app.dependency_overrides[get_provider_dep] = lambda: fake
+
+    resp = await client.post(
+        f"/extract/{api_code}",
+        files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
+        headers={"X-Api-Key": key},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["project_version"] == published_version_id
+
+
+@pytest.mark.asyncio
+async def test_public_extract_forbidden_when_published_pointer_missing(
+    client, db_session, app, tmp_path, monkeypatch
+):
+    """If api_published_at is set but published_version_id is None, refuse to serve."""
+    from app.models.project import Project
+
+    api_code, key = await _setup_published_project(client, db_session, monkeypatch, tmp_path)
+    proj = (
+        await db_session.execute(select(Project).where(Project.api_code == api_code))
+    ).scalar_one()
+    proj.published_version_id = None
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/extract/{api_code}",
+        files=[("file", ("a.pdf", io.BytesIO(b"PDF"), "application/pdf"))],
+        headers={"X-Api-Key": key},
+    )
+    assert resp.status_code == 403

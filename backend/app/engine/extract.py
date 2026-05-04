@@ -26,16 +26,26 @@ async def extract_document(
     *,
     session: AsyncSession,
     provider: Provider,
+    project_version_id: int | None = None,
 ) -> Prediction:
+    """Run extraction on a document.
+
+    `project_version_id` overrides the project's active version. Public API
+    passes `project.published_version_id` here so editing the Lab active
+    version cannot accidentally change production behavior (spec §7.2).
+    """
     d = (await session.execute(select(Document).where(Document.id == document_id))).scalar_one()
     p = (await session.execute(select(Project).where(Project.id == d.project_id))).scalar_one()
-    if p.active_version_id is None:
+    version_id = project_version_id if project_version_id is not None else p.active_version_id
+    if version_id is None:
         raise ValueError(f"project {p.id} has no active version")
     v = (
         await session.execute(
-            select(ProjectVersion).where(ProjectVersion.id == p.active_version_id)
+            select(ProjectVersion).where(ProjectVersion.id == version_id)
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if v is None or v.project_id != p.id:
+        raise ValueError(f"version {version_id} does not belong to project {p.id}")
 
     fields = [SchemaField(**f) for f in v.schema_snapshot]
     request = compose_extraction_prompt(
