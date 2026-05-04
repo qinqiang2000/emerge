@@ -151,6 +151,10 @@ async def activate_version(
     workspace_id: int = Depends(current_workspace_id),
     session: AsyncSession = Depends(get_session),
 ):
+    """Set Lab/editor active version. Does NOT change public API: spec §7.2
+    routes public extract through `published_version_id`, which only the
+    publish/rollback endpoints can mutate.
+    """
     p = await _get_project(session, project_id, workspace_id)
     v = (
         await session.execute(
