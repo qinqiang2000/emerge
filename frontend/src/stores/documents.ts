@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api, EmergeError } from "@/lib/api";
+import { api, emergeErrorKey } from "@/lib/api";
 
 export type DocumentRow = {
   id: number;
@@ -38,8 +38,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
         .data as DocumentRow[];
       set({ rows, loading: false });
     } catch (e) {
-      const code = e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-      set({ loading: false, error: `errors.${code}` });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
@@ -49,13 +48,12 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
     try {
       const fd = new FormData();
       for (const f of files) fd.append("files", f);
-      await api.post(`/api/v1/projects/${projectId}/documents`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Axios sets Content-Type with the correct multipart boundary when given
+      // a FormData body. Setting it manually drops the boundary suffix.
+      await api.post(`/api/v1/projects/${projectId}/documents`, fd);
       await get().load(projectId);
     } catch (e) {
-      const code = e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-      set({ error: `errors.${code}` });
+      set({ error: emergeErrorKey(e) });
     } finally {
       set({ uploading: false });
     }
@@ -67,8 +65,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       await api.post(`/api/v1/projects/${projectId}/extract`);
       await get().load(projectId);
     } catch (e) {
-      const code = e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-      set({ error: `errors.${code}` });
+      set({ error: emergeErrorKey(e) });
     } finally {
       set({ extracting: false });
     }

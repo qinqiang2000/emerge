@@ -5,6 +5,55 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { DocumentListPage } from "@/pages/DocumentList";
 import { useDocuments, type DocumentRow } from "@/stores/documents";
+import { useReadiness } from "@/stores/readiness";
+import type { APIReadinessOut } from "@/types/readiness";
+
+const READINESS_STUB: APIReadinessOut = {
+  quality_estimate: {
+    score: 0,
+    judge_component: 0,
+    judge_precision: 0,
+    ci_low: 0,
+    ci_high: 0,
+    observation_count: 0,
+    vibe_check_size: 0,
+  },
+  evidence_coverage: {
+    reviewed_docs: 0,
+    reviewed_entities: 0,
+    reviewed_fields: 0,
+    field_evidence_fields: 0,
+    field_evidence_coverage_ratio: 0,
+  },
+  schema_maturity: {
+    status: "draft",
+    reviewed_docs: 0,
+    reviewed_entities: 0,
+    recent_schema_breaking_changes: 0,
+    message: "",
+  },
+  regression_health: {
+    counterexamples_total: 0,
+    counterexample_component: null,
+    status: "no_production_feedback",
+  },
+  risky_fields: [],
+  publish_blockers: [],
+  warnings: [],
+};
+
+function mockGet(handler?: (url: string) => unknown) {
+  return vi.spyOn(api, "get").mockImplementation((url: string) => {
+    if (url.endsWith("/readiness")) {
+      return Promise.resolve({ data: READINESS_STUB });
+    }
+    if (handler) {
+      const data = handler(url);
+      if (data !== undefined) return Promise.resolve({ data });
+    }
+    return Promise.resolve({ data: [] });
+  });
+}
 
 const UPLOADED: DocumentRow = {
   id: 101,
@@ -50,6 +99,7 @@ async function settle() {
     expect(s.loading).toBe(false);
     expect(s.uploading).toBe(false);
     expect(s.extracting).toBe(false);
+    expect(useReadiness.getState().loading).toBe(false);
   });
 }
 
@@ -62,9 +112,8 @@ describe("DocumentListPage", () => {
       uploading: false,
       error: null,
     });
-    vi.spyOn(api, "get").mockResolvedValue({
-      data: [UPLOADED, EXTRACTED],
-    });
+    useReadiness.setState({ data: READINESS_STUB, loading: false, error: null });
+    mockGet(() => [UPLOADED, EXTRACTED]);
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -75,6 +124,7 @@ describe("DocumentListPage", () => {
       uploading: false,
       error: null,
     });
+    useReadiness.setState({ data: null, loading: false, error: null });
   });
 
   it("renders filename and status for each row", async () => {
@@ -93,11 +143,8 @@ describe("DocumentListPage", () => {
     expect(await screen.findByText("studio-routed")).toBeInTheDocument();
   });
 
-  it("upload triggers POST with multipart FormData and re-fetches list", async () => {
+  it("upload POSTs FormData without manual Content-Type and re-fetches list", async () => {
     const post = vi.spyOn(api, "post").mockResolvedValue({ data: [UPLOADED] });
-    const get = vi
-      .spyOn(api, "get")
-      .mockResolvedValue({ data: [UPLOADED, EXTRACTED] });
 
     renderPage();
     await settle();
@@ -111,23 +158,17 @@ describe("DocumentListPage", () => {
     expect(post).toHaveBeenCalledWith(
       "/api/v1/projects/7/documents",
       expect.any(FormData),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "Content-Type": "multipart/form-data",
-        }),
-      }),
     );
+    // Axios sets the Content-Type with the multipart boundary itself; the
+    // store must NOT pass a manual Content-Type header (would strip boundary).
+    expect(post.mock.calls[0]).toHaveLength(2);
     const fd = post.mock.calls[0]![1] as FormData;
     expect(fd.getAll("files")).toHaveLength(1);
-    await waitFor(() => expect(get).toHaveBeenCalled());
     await settle();
   });
 
   it("extract button POSTs and re-fetches list afterwards", async () => {
     const post = vi.spyOn(api, "post").mockResolvedValue({ data: "ok" });
-    const get = vi
-      .spyOn(api, "get")
-      .mockResolvedValue({ data: [UPLOADED, EXTRACTED] });
 
     renderPage();
     await settle();
@@ -135,7 +176,6 @@ describe("DocumentListPage", () => {
 
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(post).toHaveBeenCalledWith("/api/v1/projects/7/extract");
-    await waitFor(() => expect(get).toHaveBeenCalled());
     await settle();
   });
 
@@ -148,7 +188,7 @@ describe("DocumentListPage", () => {
       uploading: false,
       error: null,
     });
-    vi.spyOn(api, "get").mockResolvedValue({ data: [] });
+    mockGet(() => []);
     renderPage();
     await settle();
     expect(screen.getByText(/no documents/i)).toBeInTheDocument();

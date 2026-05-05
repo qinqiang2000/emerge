@@ -5,6 +5,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { ApiConsolePage } from "@/pages/ApiConsole";
 import { useProjects, type Project } from "@/stores/projects";
+import { useReadiness } from "@/stores/readiness";
+import type { APIReadinessOut } from "@/types/readiness";
+
+const READINESS_STUB: APIReadinessOut = {
+  quality_estimate: {
+    score: 0,
+    judge_component: 0,
+    judge_precision: 0,
+    ci_low: 0,
+    ci_high: 0,
+    observation_count: 0,
+    vibe_check_size: 0,
+  },
+  evidence_coverage: {
+    reviewed_docs: 0,
+    reviewed_entities: 0,
+    reviewed_fields: 0,
+    field_evidence_fields: 0,
+    field_evidence_coverage_ratio: 0,
+  },
+  schema_maturity: {
+    status: "draft",
+    reviewed_docs: 0,
+    reviewed_entities: 0,
+    recent_schema_breaking_changes: 0,
+    message: "",
+  },
+  regression_health: {
+    counterexamples_total: 0,
+    counterexample_component: null,
+    status: "no_production_feedback",
+  },
+  risky_fields: [],
+  publish_blockers: [],
+  warnings: [],
+};
 
 const PROJECT: Project = {
   id: 1,
@@ -56,6 +92,8 @@ function mockGets(opts?: {
   project?: Project;
 }) {
   vi.spyOn(api, "get").mockImplementation((url: string) => {
+    if (url.endsWith("/readiness"))
+      return Promise.resolve({ data: READINESS_STUB });
     if (url.endsWith("/versions"))
       return Promise.resolve({ data: opts?.versions ?? VERSIONS });
     if (url.endsWith("/api-keys"))
@@ -99,6 +137,7 @@ describe("ApiConsolePage", () => {
       loading: false,
       error: null,
     });
+    useReadiness.setState({ data: READINESS_STUB, loading: false, error: null });
     mockGets();
   });
   afterEach(() => {
@@ -110,6 +149,7 @@ describe("ApiConsolePage", () => {
       loading: false,
       error: null,
     });
+    useReadiness.setState({ data: null, loading: false, error: null });
   });
 
   it("renders distinct Production and Lab version pointer cards", async () => {

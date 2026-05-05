@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api, EmergeError } from "@/lib/api";
+import { api, emergeErrorKey } from "@/lib/api";
 import type { SchemaField } from "@/types/schema";
 
 export type Template = {
@@ -33,8 +33,7 @@ export const useTemplates = create<TemplatesState>((set) => ({
       const rows = (await api.get("/api/v1/templates")).data as Template[];
       set({ rows, loading: false });
     } catch (e) {
-      const code = e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-      set({ loading: false, error: `errors.${code}` });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 }));

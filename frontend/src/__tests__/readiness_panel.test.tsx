@@ -1,0 +1,215 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ReadinessPanel } from "@/components/ReadinessPanel";
+import { api } from "@/lib/api";
+import { useReadiness } from "@/stores/readiness";
+import type { APIReadinessOut } from "@/types/readiness";
+
+const BASE_READINESS: APIReadinessOut = {
+  quality_estimate: {
+    score: 0.6,
+    judge_component: 0.86,
+    judge_precision: 0.86,
+    ci_low: 0.78,
+    ci_high: 0.94,
+    observation_count: 28,
+    vibe_check_size: 12,
+  },
+  evidence_coverage: {
+    reviewed_docs: 12,
+    reviewed_entities: 48,
+    reviewed_fields: 134,
+    field_evidence_fields: 83,
+    field_evidence_coverage_ratio: 0.62,
+  },
+  schema_maturity: {
+    status: "lock_candidate",
+    reviewed_docs: 12,
+    reviewed_entities: 48,
+    recent_schema_breaking_changes: 0,
+    message: "Schema ready to lock. Confirm evidence coverage first.",
+  },
+  regression_health: {
+    counterexamples_total: 0,
+    counterexample_component: null,
+    status: "no_production_feedback",
+  },
+  risky_fields: [],
+  publish_blockers: [],
+  warnings: ["no_production_feedback"],
+};
+
+function mockReadiness(overrides: Partial<APIReadinessOut> = {}) {
+  vi.spyOn(api, "get").mockResolvedValue({
+    data: { ...BASE_READINESS, ...overrides },
+  });
+}
+
+async function renderPanel() {
+  const r = render(<ReadinessPanel projectId={42} />);
+  await waitFor(() => expect(useReadiness.getState().loading).toBe(false));
+  return r;
+}
+
+describe("ReadinessPanel", () => {
+  beforeEach(() => {
+    useReadiness.setState({ data: null, loading: false, error: null });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useReadiness.setState({ data: null, loading: false, error: null });
+  });
+
+  it("never renders 100% when counterexamples_total === 0", async () => {
+    mockReadiness();
+    const { container } = await renderPanel();
+    expect(container.textContent ?? "").not.toMatch(/100\s*%/);
+    const regression = await screen.findByTestId("readiness-regression");
+    expect(
+      within(regression).getByText(/no production feedback yet/i),
+    ).toBeInTheDocument();
+    // The dedicated "no feedback" callout also visible
+    expect(screen.getByTestId("readiness-no-feedback")).toBeInTheDocument();
+  });
+
+  it("renders quality CI band as point% ± half% with obs and vibe-check counts", async () => {
+    mockReadiness();
+    await renderPanel();
+    const quality = await screen.findByTestId("readiness-quality");
+    // judge_precision 0.86 → 86%; (ci_high - ci_low)/2 = 0.08 → 8%
+    expect(within(quality).getByText(/86\s*%/)).toBeInTheDocument();
+    expect(within(quality).getByText(/±/)).toBeInTheDocument();
+    expect(within(quality).getByText(/8\s*%/)).toBeInTheDocument();
+    expect(within(quality).getByText(/28/)).toBeInTheDocument();
+    expect(within(quality).getByText(/12/)).toBeInTheDocument();
+  });
+
+  it("renders evidence counts and coverage ratio", async () => {
+    mockReadiness();
+    await renderPanel();
+    const ev = await screen.findByTestId("readiness-evidence");
+    expect(within(ev).getByText(/12/)).toBeInTheDocument();
+    expect(within(ev).getByText(/48/)).toBeInTheDocument();
+    expect(within(ev).getByText(/134/)).toBeInTheDocument();
+    expect(within(ev).getByText(/62\s*%/)).toBeInTheDocument();
+  });
+
+  it("renders schema maturity using translated status, never raw slug", async () => {
+    mockReadiness();
+    await renderPanel();
+    const m = await screen.findByTestId("readiness-maturity");
+    // raw slug must not leak
+    expect(within(m).queryByText(/lock_candidate/i)).not.toBeInTheDocument();
+    expect(
+      within(m).getByText(/lock candidate|ready to lock/i),
+    ).toBeInTheDocument();
+  });
+
+  it("renders top 5 risky fields with +N more affordance for excess", async () => {
+    mockReadiness({
+      risky_fields: [
+        { field_name: "tax_id", count: 7 },
+        { field_name: "currency", count: 5 },
+        { field_name: "total", count: 4 },
+        { field_name: "vendor", count: 3 },
+        { field_name: "issue_date", count: 2 },
+        { field_name: "po_number", count: 1 },
+        { field_name: "tax_rate", count: 1 },
+      ],
+    });
+    await renderPanel();
+    const rf = await screen.findByTestId("readiness-risky");
+    // top 5 visible
+    expect(within(rf).getByText("tax_id")).toBeInTheDocument();
+    expect(within(rf).getByText("currency")).toBeInTheDocument();
+    expect(within(rf).getByText("total")).toBeInTheDocument();
+    expect(within(rf).getByText("vendor")).toBeInTheDocument();
+    expect(within(rf).getByText("issue_date")).toBeInTheDocument();
+    // 6th + 7th hidden behind "+N more"
+    expect(within(rf).queryByText("po_number")).not.toBeInTheDocument();
+    expect(within(rf).queryByText("tax_rate")).not.toBeInTheDocument();
+    expect(within(rf).getByText(/\+\s*2\s*more/i)).toBeInTheDocument();
+  });
+
+  it("renders all top 5 (or fewer) without +N more when count <= 5", async () => {
+    mockReadiness({
+      risky_fields: [
+        { field_name: "tax_id", count: 3 },
+        { field_name: "currency", count: 2 },
+      ],
+    });
+    await renderPanel();
+    const rf = await screen.findByTestId("readiness-risky");
+    expect(within(rf).getByText("tax_id")).toBeInTheDocument();
+    expect(within(rf).getByText("currency")).toBeInTheDocument();
+    expect(within(rf).queryByText(/more/i)).not.toBeInTheDocument();
+  });
+
+  it("translates publish_blockers; never leaks raw slugs to users", async () => {
+    mockReadiness({
+      publish_blockers: ["empty_schema", "active_version_unlocked"],
+      schema_maturity: { ...BASE_READINESS.schema_maturity, status: "draft" },
+    });
+    await renderPanel();
+    const blockers = await screen.findByTestId("readiness-blockers");
+    // raw slugs must NEVER reach the user
+    expect(within(blockers).queryByText("empty_schema")).not.toBeInTheDocument();
+    expect(
+      within(blockers).queryByText("active_version_unlocked"),
+    ).not.toBeInTheDocument();
+    // friendly translated copy is present
+    expect(
+      within(blockers).getByText(/schema is empty|empty schema/i),
+    ).toBeInTheDocument();
+    expect(
+      within(blockers).getByText(/lab.*not locked|version.*unlocked|lock the schema/i),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to humanised slug + console.warn for unknown blocker keys", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockReadiness({ publish_blockers: ["future_unknown_slug"] });
+    await renderPanel();
+    const blockers = await screen.findByTestId("readiness-blockers");
+    expect(
+      within(blockers).queryByText("future_unknown_slug"),
+    ).not.toBeInTheDocument();
+    // humanised: "Future unknown slug"
+    expect(
+      within(blockers).getByText(/future unknown slug/i),
+    ).toBeInTheDocument();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("renders regression count when counterexamples_total > 0 and never reads raw status slug", async () => {
+    mockReadiness({
+      regression_health: {
+        counterexamples_total: 8,
+        counterexample_component: 0.875,
+        status: "unknown",
+      },
+    });
+    await renderPanel();
+    const reg = await screen.findByTestId("readiness-regression");
+    // approximated passing count = round(0.875 * 8) = 7
+    expect(within(reg).getByText(/7\s*\/\s*8/)).toBeInTheDocument();
+    expect(
+      within(reg).queryByText(/no production feedback/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses only semantic Tailwind tokens (no raw color classes)", async () => {
+    mockReadiness({
+      publish_blockers: ["empty_schema"],
+      risky_fields: [{ field_name: "tax_id", count: 3 }],
+    });
+    const { container } = await renderPanel();
+    const html = container.innerHTML;
+    // red-line: no raw Tailwind color classes anywhere in the panel
+    expect(html).not.toMatch(/\bbg-(?:gray|white|black)\b/);
+    expect(html).not.toMatch(/\btext-(?:white|black)\b/);
+    // and no raw gray text scale either
+    expect(html).not.toMatch(/\btext-gray-\d+\b/);
+  });
+});

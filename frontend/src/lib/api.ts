@@ -50,3 +50,11 @@ api.interceptors.response.use(
     return Promise.reject(err);
   },
 );
+
+export function emergeCode(e: unknown): string {
+  return e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
+}
+
+export function emergeErrorKey(e: unknown): string {
+  return `errors.${emergeCode(e)}`;
+}

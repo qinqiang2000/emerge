@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { ApiKeyRevealModal } from "@/components/ApiKeyRevealModal";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
+import { ReadinessPanel } from "@/components/ReadinessPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -185,6 +186,8 @@ export function ApiConsolePage() {
             {actionError ?? (error ? t(error) : null)}
           </p>
         )}
+
+        <ReadinessPanel projectId={projectId} />
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <VersionPointerCard

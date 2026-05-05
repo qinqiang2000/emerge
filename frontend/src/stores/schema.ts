@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api, EmergeError } from "@/lib/api";
+import { api, emergeErrorKey, EmergeError } from "@/lib/api";
 import type { SchemaField } from "@/types/schema";
 
 export type ProjectVersion = {
@@ -39,10 +39,6 @@ type SchemaState = {
   unlock: (projectId: number) => Promise<void>;
 };
 
-function emergeCode(e: unknown): string {
-  return e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-}
-
 export const useSchema = create<SchemaState>((set, get) => ({
   active: null,
   lockStatus: null,
@@ -59,7 +55,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
       ).data as ProjectVersion;
       set({ active, loading: false });
     } catch (e) {
-      set({ loading: false, error: `errors.${emergeCode(e)}` });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
@@ -70,7 +66,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
       ).data as LockStatus;
       set({ lockStatus });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
     }
   },
 
@@ -87,7 +83,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
       set({ active });
       await get().loadLockStatus(projectId);
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
     } finally {
       set({ saving: false });
     }
@@ -102,11 +98,9 @@ export const useSchema = create<SchemaState>((set, get) => ({
       if (active) set({ active });
       await get().loadLockStatus(projectId);
     } catch (e) {
-      const code = emergeCode(e);
-      const reason =
-        e instanceof EmergeError ? e.message : null;
+      const reason = e instanceof EmergeError ? e.message : null;
       set({
-        error: `errors.${code}`,
+        error: emergeErrorKey(e),
         lockStatus: reason ? { can_lock: false, reason } : get().lockStatus,
       });
     } finally {
@@ -122,7 +116,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
       set({ active });
       await get().loadLockStatus(projectId);
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
     } finally {
       set({ locking: false });
     }

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api, EmergeError } from "@/lib/api";
+import { api, emergeErrorKey } from "@/lib/api";
 
 export type EntityOutput = Record<string, unknown>;
 
@@ -65,8 +65,7 @@ export const useStudio = create<StudioState>((set, get) => ({
       ).data as DocumentDetail;
       set({ doc, draft: seedDraft(doc), loading: false });
     } catch (e) {
-      const code = e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-      set({ loading: false, error: `errors.${code}` });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
@@ -88,8 +87,7 @@ export const useStudio = create<StudioState>((set, get) => ({
       );
       await get().load(projectId, doc.id);
     } catch (e) {
-      const code = e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-      set({ error: `errors.${code}` });
+      set({ error: emergeErrorKey(e) });
     } finally {
       set({ saving: false });
     }

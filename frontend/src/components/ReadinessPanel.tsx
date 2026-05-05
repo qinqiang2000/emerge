@@ -1,0 +1,330 @@
+import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
+
+import { Badge } from "@/components/ui/Badge";
+import { useT } from "@/i18n/useT";
+import { useReadiness } from "@/stores/readiness";
+import type {
+  APIReadinessOut,
+  EvidenceCoverage,
+  QualityEstimate,
+  RegressionHealth,
+  RiskyField,
+  SchemaMaturity,
+} from "@/types/readiness";
+
+const RISKY_TOP_N = 5;
+
+const KNOWN_BLOCKERS = new Set([
+  "no_active_version",
+  "active_version_unlocked",
+  "empty_schema",
+  "schema_not_lock_candidate",
+]);
+
+const KNOWN_WARNINGS = new Set([
+  "schema_still_stabilizing",
+  "risky_fields_present",
+  "no_production_feedback",
+  "low_evidence",
+  "low_field_evidence",
+]);
+
+const KNOWN_MATURITY = new Set(["draft", "stabilizing", "lock_candidate", "locked"]);
+
+function pct(x: number): number {
+  return Math.round(x * 100);
+}
+
+function humaniseSlug(slug: string): string {
+  if (!slug) return slug;
+  const spaced = slug.replace(/_/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+export function ReadinessPanel({ projectId }: { projectId: number }) {
+  const t = useT();
+  const data = useReadiness((s) => s.data);
+  const loading = useReadiness((s) => s.loading);
+  const error = useReadiness((s) => s.error);
+  const load = useReadiness((s) => s.load);
+
+  useEffect(() => {
+    if (Number.isFinite(projectId)) void load(projectId);
+  }, [projectId, load]);
+
+  if (error) {
+    return (
+      <section
+        data-testid="readiness-panel"
+        className="rounded-md border border-status-error/40 bg-bg-elevated p-4"
+      >
+        <p role="alert" className="text-sm text-status-error">
+          {t(error)}
+        </p>
+      </section>
+    );
+  }
+
+  if (loading && !data) {
+    return (
+      <section
+        data-testid="readiness-panel"
+        className="rounded-md border border-border-default bg-bg-elevated p-4"
+      >
+        <p className="text-sm text-fg-muted">{t("readiness.loading")}</p>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return (
+      <section
+        data-testid="readiness-panel"
+        className="rounded-md border border-border-default bg-bg-elevated p-4"
+      >
+        <p className="text-sm text-fg-muted">{t("readiness.empty")}</p>
+      </section>
+    );
+  }
+
+  return <ReadinessBody data={data} />;
+}
+
+function ReadinessBody({ data }: { data: APIReadinessOut }) {
+  const t = useT();
+  const noProductionFeedback =
+    data.regression_health.counterexamples_total === 0;
+  return (
+    <section
+      data-testid="readiness-panel"
+      className="space-y-3 rounded-md border border-border-default bg-bg-elevated p-4"
+    >
+      <header>
+        <h2 className="text-sm font-semibold text-fg-primary">
+          {t("readiness.title")}
+        </h2>
+      </header>
+      <dl className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+        <QualityRow q={data.quality_estimate} />
+        <EvidenceRow e={data.evidence_coverage} />
+        <MaturityRow m={data.schema_maturity} />
+        <RegressionRow r={data.regression_health} />
+      </dl>
+      <RiskyFieldsRow risky={data.risky_fields} />
+      {noProductionFeedback ? (
+        <p
+          data-testid="readiness-no-feedback"
+          className="rounded-sm border border-border-default bg-bg-muted p-2 text-xs text-fg-muted"
+        >
+          {t("readiness.no_feedback_callout")}
+        </p>
+      ) : null}
+      <BlockersRow blockers={data.publish_blockers} />
+      <WarningsRow warnings={data.warnings} />
+    </section>
+  );
+}
+
+function QualityRow({ q }: { q: QualityEstimate }) {
+  const t = useT();
+  const point = pct(q.judge_precision);
+  const half = pct(Math.max(0, (q.ci_high - q.ci_low) / 2));
+  return (
+    <div data-testid="readiness-quality" className="flex flex-col gap-0.5">
+      <dt className="text-xs uppercase tracking-wide text-fg-muted">
+        {t("readiness.quality_label")}
+      </dt>
+      <dd className="text-fg-primary">
+        <span>{t("readiness.quality_value", { point, half })}</span>{" "}
+        <span className="text-xs text-fg-muted">
+          {t("readiness.quality_meta", {
+            obs: q.observation_count,
+            vibe: q.vibe_check_size,
+          })}
+        </span>
+      </dd>
+    </div>
+  );
+}
+
+function EvidenceRow({ e }: { e: EvidenceCoverage }) {
+  const t = useT();
+  return (
+    <div data-testid="readiness-evidence" className="flex flex-col gap-0.5">
+      <dt className="text-xs uppercase tracking-wide text-fg-muted">
+        {t("readiness.evidence_label")}
+      </dt>
+      <dd className="text-fg-primary">
+        <span>
+          {t("readiness.evidence_value", {
+            docs: e.reviewed_docs,
+            entities: e.reviewed_entities,
+            fields: e.reviewed_fields,
+          })}
+        </span>{" "}
+        <span className="text-xs text-fg-muted">
+          {t("readiness.evidence_coverage", {
+            ratio: pct(e.field_evidence_coverage_ratio),
+          })}
+        </span>
+      </dd>
+    </div>
+  );
+}
+
+function MaturityRow({ m }: { m: SchemaMaturity }) {
+  const t = useT();
+  const i18n = useTranslation().i18n;
+  const key = `readiness.maturity.${m.status}`;
+  // unknown statuses must not leak the raw slug — fall back to humanised form.
+  let label: string;
+  if (KNOWN_MATURITY.has(m.status) && i18n.exists(key)) {
+    label = t(key);
+  } else {
+    if (typeof console !== "undefined") {
+      console.warn(`[ReadinessPanel] unknown maturity status: ${m.status}`);
+    }
+    label = humaniseSlug(m.status);
+  }
+  return (
+    <div data-testid="readiness-maturity" className="flex flex-col gap-0.5">
+      <dt className="text-xs uppercase tracking-wide text-fg-muted">
+        {t("readiness.maturity_label")}
+      </dt>
+      <dd className="text-fg-primary">
+        <span>{label}</span>{" "}
+        <span className="text-xs text-fg-muted">
+          {t("readiness.maturity_breaking_changes", {
+            count: m.recent_schema_breaking_changes,
+          })}
+        </span>
+      </dd>
+    </div>
+  );
+}
+
+function RegressionRow({ r }: { r: RegressionHealth }) {
+  const t = useT();
+  const total = r.counterexamples_total;
+  if (total === 0) {
+    return (
+      <div data-testid="readiness-regression" className="flex flex-col gap-0.5">
+        <dt className="text-xs uppercase tracking-wide text-fg-muted">
+          {t("readiness.regression_label")}
+        </dt>
+        <dd className="text-fg-muted">{t("readiness.regression_no_feedback")}</dd>
+      </div>
+    );
+  }
+  // Backend exposes counterexample_component as a 0..1 ratio rather than a
+  // raw passing count. Approximate `passing` from the component until the
+  // backend surfaces it directly.
+  const component = r.counterexample_component ?? 0;
+  const passing = Math.round(component * total);
+  return (
+    <div data-testid="readiness-regression" className="flex flex-col gap-0.5">
+      <dt className="text-xs uppercase tracking-wide text-fg-muted">
+        {t("readiness.regression_label")}
+      </dt>
+      <dd className="text-fg-primary">
+        <span>{t("readiness.regression_passing", { passing, total })}</span>
+      </dd>
+    </div>
+  );
+}
+
+function RiskyFieldsRow({ risky }: { risky: RiskyField[] }) {
+  const t = useT();
+  const sorted = [...risky].sort((a, b) => b.count - a.count);
+  const top = sorted.slice(0, RISKY_TOP_N);
+  const overflow = Math.max(0, sorted.length - RISKY_TOP_N);
+  return (
+    <div data-testid="readiness-risky" className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-wide text-fg-muted">
+        {t("readiness.risky_label")}
+      </span>
+      {top.length === 0 ? (
+        <span className="text-xs text-fg-muted">{t("readiness.risky_empty")}</span>
+      ) : (
+        <ul className="flex flex-wrap items-center gap-2">
+          {top.map((f) => (
+            <li key={f.field_name}>
+              <Badge tone="warning">
+                <span className="font-mono">{f.field_name}</span>
+                <span className="ml-1 text-xs">({f.count})</span>
+              </Badge>
+            </li>
+          ))}
+          {overflow > 0 ? (
+            <li className="text-xs text-fg-muted">
+              {t("readiness.risky_more", { count: overflow })}
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function BlockersRow({ blockers }: { blockers: string[] }) {
+  const t = useT();
+  const { i18n } = useTranslation();
+  if (blockers.length === 0) return null;
+  return (
+    <div
+      data-testid="readiness-blockers"
+      className="flex flex-col gap-1 rounded-sm border border-status-error/40 bg-bg-muted p-2"
+    >
+      <span className="text-xs uppercase tracking-wide text-status-error">
+        {t("readiness.blockers_label")}
+      </span>
+      <ul className="space-y-1">
+        {blockers.map((slug) => (
+          <li key={slug} className="text-sm text-fg-primary">
+            {resolveSlug(slug, "blocker", t, i18n)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function WarningsRow({ warnings }: { warnings: string[] }) {
+  const t = useT();
+  const { i18n } = useTranslation();
+  if (warnings.length === 0) return null;
+  return (
+    <div
+      data-testid="readiness-warnings"
+      className="flex flex-col gap-1 rounded-sm border border-status-warning/40 bg-bg-muted p-2"
+    >
+      <span className="text-xs uppercase tracking-wide text-status-warning">
+        {t("readiness.warnings_label")}
+      </span>
+      <ul className="space-y-1">
+        {warnings.map((slug) => (
+          <li key={slug} className="text-sm text-fg-primary">
+            {resolveSlug(slug, "warning", t, i18n)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function resolveSlug(
+  slug: string,
+  kind: "blocker" | "warning",
+  t: (k: string) => string,
+  i18n: { exists: (k: string) => boolean },
+): string {
+  const known =
+    kind === "blocker" ? KNOWN_BLOCKERS.has(slug) : KNOWN_WARNINGS.has(slug);
+  const key = `errors.readiness.${slug}`;
+  if (known && i18n.exists(key)) return t(key);
+  if (typeof console !== "undefined") {
+    console.warn(`[ReadinessPanel] missing i18n key for ${kind}: ${slug}`);
+  }
+  return humaniseSlug(slug);
+}

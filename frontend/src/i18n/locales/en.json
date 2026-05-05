@@ -157,7 +157,49 @@
     "CONFLICT": "That conflicts with the current state.",
     "VALIDATION_FAILED": "Please check the form and try again.",
     "RATE_LIMITED": "You're moving too fast — try again in a moment.",
-    "INTERNAL_ERROR": "Something went wrong. Please retry."
+    "INTERNAL_ERROR": "Something went wrong. Please retry.",
+    "readiness": {
+      "no_active_version": "No active Lab version yet. Create or open the schema editor.",
+      "active_version_unlocked": "Lab version is not locked. Lock the schema before publishing.",
+      "empty_schema": "Schema is empty. Add at least one field before publishing.",
+      "schema_not_lock_candidate": "Schema is not yet a lock candidate. Keep reviewing documents.",
+      "schema_still_stabilizing": "Schema is still stabilizing — review more documents before locking.",
+      "risky_fields_present": "Some fields show low confidence on vibe-check documents.",
+      "no_production_feedback": "No production feedback yet — the first integrator call will populate regression data.",
+      "low_evidence": "Evidence is thin: review more documents or expand the vibe-check set.",
+      "low_field_evidence": "Few fields have quote-level evidence. Saving corrections produces evidence."
+    }
+  },
+  "readiness": {
+    "title": "API Readiness",
+    "loading": "Loading readiness…",
+    "empty": "No readiness signal yet.",
+    "quality_label": "Quality",
+    "quality_value": "{{point}}% ± {{half}}%",
+    "quality_meta": "{{obs}} obs · vibe-check {{vibe}}",
+    "evidence_label": "Evidence",
+    "evidence_value": "{{docs}} docs · {{entities}} entities · {{fields}} fields reviewed",
+    "evidence_coverage": "{{ratio}}% with field evidence",
+    "maturity_label": "Schema",
+    "maturity_breaking_changes": "{{count}} breaking changes recorded",
+    "regression_label": "Regression",
+    "regression_no_feedback": "No production feedback yet",
+    "regression_passing": "{{passing}} / {{total}} passing",
+    "regression_status_passing": "All counterexamples passing",
+    "regression_status_failing": "Counterexamples failing — review before publishing",
+    "regression_status_unknown": "Regression status not yet computed",
+    "risky_label": "Risky fields",
+    "risky_empty": "No risky fields detected.",
+    "risky_more": "+{{count}} more",
+    "blockers_label": "Publish blockers",
+    "warnings_label": "Warnings",
+    "maturity": {
+      "draft": "Draft — keep reviewing",
+      "stabilizing": "Stabilizing — review risky fields before locking",
+      "lock_candidate": "Lock candidate — ready to lock once evidence is in",
+      "locked": "Locked"
+    },
+    "no_feedback_callout": "No production feedback yet — readiness reflects Lab evidence only. The first integrator call will populate regression data."
   },
   "common": {
     "cancel": "Cancel",

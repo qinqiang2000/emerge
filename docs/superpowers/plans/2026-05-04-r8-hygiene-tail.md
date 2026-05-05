@@ -22,7 +22,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 | 5 | gate-review (R8.1.b) | `pages/ProjectCreate.tsx` | Optional: textarea placeholder also reads "Coming in v1.1" (currently the helper text says it but the field placeholder still says "Describe it..."). |
 | 6 | gate-review (R8.1.a–e) | `App.tsx`, test setup | React Router v7 `future` flag silencer — every test using MemoryRouter logs the v7 future warnings. Add `future={{v7_startTransition: true, v7_relativeSplatPath: true}}`. |
 | 7 | gate-review (R8.1.c onward), smoke | `__tests__/document_list.test.tsx`, `studio_save.test.tsx`, `schema_editor.test.tsx`, `api_console.test.tsx` | `act()` warnings — `useEffect → store.load()` promise chain triggers setState outside `act`. Replace per-test `settle()` with per-assertion `waitFor(...)`, or skip auto-load in tests via a flag, or migrate to MSW. **R8.2.c reuses the same pattern** (#41). |
-| 8 | gate-review (R8.1.c) | `stores/documents.ts:55-57` | Drop manual `Content-Type: multipart/form-data` — axios sets it correctly with boundary. Current value strips boundary suffix; Starlette tolerates it but stricter middleware won't. |
+| ~~8~~ | gate-review (R8.1.c) | `stores/documents.ts:55-57` | ~~Drop manual `Content-Type: multipart/form-data` — axios sets it correctly with boundary.~~ Resolved — see §3. |
 | 9 | gate-review (R8.1.c) | `pages/DocumentList.tsx:54` | `accept="application/pdf,image/*"` includes images even though backend doesn't process them; align with R8.5 evidence work. |
 | 10 | gate-review (R8.1.d) | `pages/Studio.tsx:154` | `<label>` wraps `<Input>` without explicit `htmlFor`/`id` for a11y. |
 | 11 | gate-review (R8.1.d), smoke | `pages/Studio.tsx` field rendering | **JSON.stringify type-coercion**: number `100` becomes string `"100"`, boolean `true` becomes `"true"` on save. R8.5 evidence-aware editor naturally fixes; track explicitly so v1 GA does not ship lossy mode. |
@@ -31,7 +31,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 | 14 | gate-review | cross-cutting | Optional `renderErrorKey(t, errKey)` helper for symmetry with future toasts. |
 | 15 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx` | Save POSTs even with no diff → no-op `version_number` bump on backend. Add dirty-check modeled on Studio. |
 | 16 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx:41-44` | Sync useEffect on `active` may overwrite in-flight local edits. Guard with `JSON.stringify` equality. |
-| 17 | gate-review (R8.1.e), reviewer-cross-cutting | Cross-store | `errors.${code}` envelope mapping repeats in 6 stores; lift `emergeCode()` helper to `lib/api.ts`. |
+| ~~17~~ | gate-review (R8.1.e), reviewer-cross-cutting | Cross-store | ~~`errors.${code}` envelope mapping repeats in 6 stores; lift `emergeCode()` helper to `lib/api.ts`.~~ Resolved — see §3. |
 | 18 | gate-review (R8.1.e) | Test helpers | `settle()` helper copy-pasted in 3+ specs; extract to `__tests__/_helpers/settle.ts`. |
 | 19 | gate-review (R8.1.e) | `i18n/locales/en.json` | `schema.tab_form` and `schema.lock_status_blocked` defined but unused (`tab_chat` is the explicit chat-mode placeholder per overlay; keep). |
 | 20 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx:163-168` | Notes Textarea renders even when `draft.length === 0` — cosmetic inconsistency with no-fields empty state. |
@@ -74,6 +74,8 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 - ~~(rename-B)~~ `publish()` no longer re-stamps `api_published_at` on pure rename → fixed in `e7edcdf`.
 - ~~(auth-race)~~ Auth boot-prime — JWT attached at `lib/api.ts` module load → fixed in `80458c8`.
 - ~~(pages-col)~~ Backend `Document.page_count` always 0 → frontend dropped the column → fixed in `80458c8` + `82be98d`.
+- ~~(8)~~ `stores/documents.ts` manual `Content-Type: multipart/form-data` dropped (axios sets the boundary itself) → fixed in the R8.3 readiness-panel commit; tests updated to assert no manual header.
+- ~~(17)~~ Cross-store `emergeCode()` lifted to `lib/api.ts` as `emergeCode` + `emergeErrorKey` helpers; all 6 stores migrated → fixed in the R8.3 readiness-panel commit.
 
 ---
 

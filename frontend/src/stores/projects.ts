@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api, EmergeError } from "@/lib/api";
+import { api, emergeErrorKey } from "@/lib/api";
 
 export type Project = {
   id: number;
@@ -81,10 +81,6 @@ type ProjectsState = {
   revokeKey: (projectId: number, keyId: number) => Promise<void>;
 };
 
-function emergeCode(e: unknown): string {
-  return e instanceof EmergeError ? e.code : "INTERNAL_ERROR";
-}
-
 function spliceProject(rows: Project[], updated: Project): Project[] {
   const i = rows.findIndex((p) => p.id === updated.id);
   if (i < 0) return [...rows, updated];
@@ -107,7 +103,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       const rows = (await api.get("/api/v1/projects")).data as Project[];
       set({ rows, loading: false });
     } catch (e) {
-      set({ loading: false, error: `errors.${emergeCode(e)}` });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
@@ -118,7 +114,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
         .data as Project;
       set({ rows: spliceProject(get().rows, updated), loading: false });
     } catch (e) {
-      set({ loading: false, error: `errors.${emergeCode(e)}` });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
@@ -130,7 +126,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       ).data as ProjectVersionMeta[];
       set({ versions });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
     }
   },
 
@@ -145,7 +141,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
         .data as Project;
       set({ rows: spliceProject(get().rows, updated) });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
       throw e;
     }
   },
@@ -158,7 +154,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       ).data as Project;
       set({ rows: spliceProject(get().rows, updated) });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
       throw e;
     }
   },
@@ -173,7 +169,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       ).data as Project;
       set({ rows: spliceProject(get().rows, updated) });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
       throw e;
     }
   },
@@ -191,7 +187,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       ).data as ContractDiff;
       set({ contractDiff: diff });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
     }
   },
 
@@ -203,7 +199,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       ).data as ApiKeyOut[];
       set({ apiKeys });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
     }
   },
 
@@ -229,7 +225,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       await api.delete(`/api/v1/projects/${projectId}/api-keys/${keyId}`);
       set({ apiKeys: get().apiKeys.filter((k) => k.id !== keyId) });
     } catch (e) {
-      set({ error: `errors.${emergeCode(e)}` });
+      set({ error: emergeErrorKey(e) });
       throw e;
     }
   },

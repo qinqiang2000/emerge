@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api, EmergeError, setAuthToken } from "@/lib/api";
+import { api, emergeErrorKey, setAuthToken } from "@/lib/api";
 
 type User = { id: number; email: string; workspace_id: number };
 
@@ -45,8 +45,7 @@ export const useAuth = create<AuthState>((set) => ({
       const me = (await api.get("/api/v1/me")).data;
       set({ token: tok, user: me, loading: false });
     } catch (e) {
-      const msg = e instanceof EmergeError ? `errors.${e.code}` : "errors.INTERNAL_ERROR";
-      set({ loading: false, error: msg });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
@@ -56,8 +55,7 @@ export const useAuth = create<AuthState>((set) => ({
       await api.post("/api/v1/auth/register", { email, password });
       await useAuth.getState().login(email, password);
     } catch (e) {
-      const msg = e instanceof EmergeError ? `errors.${e.code}` : "errors.INTERNAL_ERROR";
-      set({ loading: false, error: msg });
+      set({ loading: false, error: emergeErrorKey(e) });
     }
   },
 
