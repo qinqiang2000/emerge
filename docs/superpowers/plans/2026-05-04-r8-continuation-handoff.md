@@ -1,7 +1,7 @@
 # R8 continuation handoff — R8.4 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.6 partial-feedback builder + API Console form + Studio Report-wrong dialog)
+Last refreshed: 2026-05-05 (post R8.7 walking-skeleton E2E + judge-provider gap flag)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -28,11 +28,11 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state (2026-05-05 refresh, post R8.6)
+## 1. Current live state (2026-05-05 refresh, post R8.7)
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    9e44b1f test(frontend): cover Report-wrong empty-state and non-string seeding
+HEAD:    151e2de test(frontend): walking-skeleton E2E covers publish + readiness + feedback
 status:  clean
 ```
 
@@ -65,9 +65,22 @@ R8.5 gate review (subagent): both commits ready-to-merge with no Critical/Import
 
 R8.6 gate reviews (3 subagent rounds): all green, no Critical, two Important during R8.6.b (both fixed in `f8f845e`), two Minor test-gap follow-ups during R8.6.c (both fixed in `9e44b1f`). Other Minor items deferred (stylistic renames, Flag-icon discoverability, no-op annotation guard, Radix `act()` warning suppression).
 
+**R8.7 — Walking Skeleton E2E** (`151e2de`): single Playwright spec `frontend/e2e/walking_skeleton.spec.ts` (~210 lines) gated on `EMERGE_E2E=1`, plus `frontend/e2e/fixtures/sample.pdf` (320 KB Japanese parking receipt; same PDF the dogfood project 2 uses for real-world Gemini extraction). Walks register → create from `japan_receipt` → upload×3 → extract → 2 corrections (with field name discovered live via `page.request` against `documents/{did}` so the spec doesn't guess Gemini's output shape) → schema lock → API Console activate-for-API → key reveal modal → public `/extract/{api_code}/feedback` POST with `X-Api-Key` (via `page.request.post` so plaintext never traverses a logged form input) → readiness `regression_health.counterexamples_total ≥ 1` (asserted both via API and via UI absence of `data-testid="readiness-no-feedback"`) → `/projects/:id/review` `[data-testid^="review-row-"]` non-empty.
+
+Two **forced adaptations** vs the overlay R8.7 recipe, both surfaced by the live run and documented in spec comments:
+
+1. **Upload 3 PDFs, not 2.** Vibe-check pool excludes docs covered by saved annotations (`recompute.py:24-56` / spec §4.1). After my 2 corrections satisfy lock-status, both corrected docs leave the pool, so review-queue's `all` section would be empty. The 3rd uncorrected doc keeps `all` populated without needing judge verdicts.
+2. **Drop the `/judge` POST.** `get_judge_provider()` (`backend/app/engine/judge.py:58-63`) raises `NotImplementedError` in production until R6 wires the pro-model judge — tests substitute via `dependency_overrides`, but a live POST returns 500. The plan's recipe assumed it worked live; the spec asserts the review-queue surface with what's actually populated (the unannotated 3rd doc in `all` and `spot_check`).
+
+Plaintext key handling (the most security-sensitive piece): read once from the modal's `code[aria-label="API key plaintext"]` via `.textContent()`, passed to `page.request.post` as `X-Api-Key`, never `console.log`'d, never written to test artifacts (verified via `grep -r "ek_[A-Za-z0-9]{6,}" frontend/test-results/` returning empty). JWT read from `localStorage.emerge.token` follows the same pattern.
+
+Live run validated end-to-end against running `uv run uvicorn app.main:app --reload --port 8000` with `GOOGLE_API_KEY` set + proxy reachable (Gemini calls require `127.0.0.1:7890` on this machine — when the proxy is down, `extract_document` fails with `httpx.ConnectError`, error_message is empty in DB because `str(httpx.ConnectError())` returns `''`). Total runtime: 21 s with warm Gemini, expect ~60-120 s on cold start.
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+151e2de test(frontend): walking-skeleton E2E covers publish + readiness + feedback
+1c51bad docs(handoff): refresh after R8.6 partial-feedback builder + form + dialog
 9e44b1f test(frontend): cover Report-wrong empty-state and non-string seeding
 69bfdc8 feat(frontend): Studio Report-wrong dialog reuses partial-feedback shape
 f8f845e fix(frontend): apply R8.6.b gate-review fixes to FeedbackTestForm
@@ -120,10 +133,14 @@ b813e6f docs: add R8 productization MVP overlay plan
 cd frontend && npm run lint                : clean
 cd frontend && npm test                    : 19 files / 137 tests passed
 cd frontend && npm run build               : 455 KB / 141 KB gzipped
-cd backend  && uv run pytest -q            : 240 passed, 2 skipped, 4 warnings (R8.6 frontend-only — backend untouched since R8.5)
+cd frontend && EMERGE_E2E=1 npx playwright test walking_skeleton : 1 passed (21.2s, warm Gemini)
+cd backend  && uv run pytest -q            : 240 passed, 2 skipped, 4 warnings (R8.7 frontend-only — backend untouched since R8.5)
 ```
 
-### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4)
+### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4 + R8.7 automated)
+
+- R8.7 (Playwright, project 5 `walk-1777984097879`, dogfood email `e2e-walking-{stamp}@e.com`): full happy-path automated. Captured timing — 21.2s end-to-end with Gemini already warm (3 PDFs × ~5s each for extract dominated). On a cold network, expect 60-120s for the first extract. Found two real backend gaps (now in §13 below): (a) `get_judge_provider` raises `NotImplementedError` in production code path — `/judge` returns 500 outside test harness; (b) vibe-check pool semantics correctly exclude annotated docs from review-queue, which the spec works around with a 3rd uncorrected doc. Operational note: spec does not auto-skip on connectivity failure; if the local proxy (Clash on `127.0.0.1:7890` here) is down or the backend lost its proxy env, extract calls fail silently as `httpx.ConnectError` → `error_message=''` in DB → docs go to `errored`. Restart pattern when proxy is down: `https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 uv run uvicorn app.main:app --reload --port 8000`.
+
 
 - R8.5 (chrome-devtools-mcp driven, project 2 published `test1`, dogfood@example.com): seeded `per_field_evidence` + `per_field_confidence` directly into pred 2 (doc 3) and pred 3 (doc 2) since Gemini's existing predictions didn't carry them, then walked all six UI branches. State A (no evidence + no verdict on `issue_date` rows) shows neither chip nor button. State B (`up` + full evidence) shows button only, no chip. State C (`uncertain` + rationale-only) shows muted chip + button; popover renders only the rationale section, no Page line, no blockquote — the exact rationale-only branch the unit test pins. State D (`down` + full evidence) shows warning-bordered chip "NEEDS REVIEW" + button; popover renders Page 1 + 計 ¥330 (blockquote) + Rationale. State E (rationale-only) covered within C. State F (`down` + evidence with bbox/coordinates/region keys) verified the FE allow-list: popover rendered Page + Quote + Rationale, **no** forbidden keys reached the DOM, and `[FieldEvidencePopover] dropped forbidden/unknown evidence keys ... (spec §3.2 — no bbox/coordinates/region/polygon/span)` fired in the console. Toggle-close, Escape-close, and click-outside-close all confirmed. Dark theme: dialog `bg-bg-surface` resolves to `rgb(9,9,11)`, text `fg-primary` `rgb(244,244,245)`, border `border-default` `rgb(63,63,70)`; warning chip text+border `rgb(245,158,11)` against the dark surface — high-contrast, no AA concerns. Found two new hygiene items (47/48): `pickAllowedKeys` re-warns on every render (8× on a single field after a few toggles); `source_text_hash` is in the allow-list but not rendered in the popover JSX. Plus operational note (49): pred 2 + pred 3 in the dogfood DB now carry seeded evidence/confidence — forbidden keys were stripped post-smoke; spec-allowed keys retained for R8.6 to reuse.
 
@@ -139,7 +156,20 @@ Open UX findings from those smokes are tracked in the hygiene tail. See §13 bel
 
 ---
 
-## 2. R8.7 entry point — read this then dive in
+## 2. Next: R8 MVP exit-gate audit
+
+R8.7 landed in `151e2de`. The R8 Productization MVP is **functionally complete on this branch**. Next session should run the §12 exit-gate checklist as a manual audit — every item except #15 (the E2E) is already validated by automated CI (`npm run lint && npm test && npm run build && uv run pytest`); #15 is now also validated when `EMERGE_E2E=1 npx playwright test walking_skeleton` runs against a live backend with provider key reachable.
+
+Two backend gaps surfaced by R8.7 (now in hygiene-tail §3c) should be triaged before tagging this MVP as shippable to integrators:
+
+1. `get_judge_provider()` raises `NotImplementedError` in production. R6's `default_model_pro` settings split (per CLAUDE.md model-tier-split memory) needs a real Gemini-pro-backed `JudgeProvider` registered. Today the `/judge` endpoint cannot be exercised by anyone except tests.
+2. Vibe-check / review-queue interaction with corrections is correct per spec §4.1 but counterintuitive: a doc is dropped from the review pool the instant the user saves an annotation, even if the saved annotation is the user's first pass and they intend to revisit. Whether this is the desired UX or whether v1.1 should let users explicitly mark a doc "needs review" is a product decision.
+
+Either is "real but non-blocking" for R8 MVP per the original cut list — flag for v1.1 prioritisation discussion.
+
+Once those are triaged, the recommended next-session path is **§13 P0 — Release hardening / dogfood**.
+
+### Historical R8.7 entry detail (kept for reference)
 
 Authoritative R8.7 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.7 — Walking Skeleton E2E** (around lines 879+).
 
@@ -289,7 +319,13 @@ Prompt 6 (DONE)  => R8.5 Field Evidence display (backend payload + popover/chip)
 Prompt 7 (DONE)  => R8.6 Partial Feedback UI: builder + API Console form
                     + Studio Report-wrong dialog (gate-fix in f8f845e,
                     test-coverage follow-up in 9e44b1f)
-Prompt 8 (NEXT)  => R8.7 Walking Skeleton E2E
+Prompt 8 (DONE)  => R8.7 Walking Skeleton E2E (151e2de) — judge POST
+                    dropped, 3rd uncorrected doc added; both adaptations
+                    forced by backend reality (judge_provider not wired
+                    + vibe-check pool semantics, see §13)
+NEXT             => R8 MVP exit-gate audit (§12) → §13 P0 Release
+                    hardening / dogfood, after triaging the two backend
+                    gaps from §2.
 ```
 
 §5–§7 below preserve the historical R8.1 / R8.2 / R8.3 prompts as reference for the patterns those phases established; new sessions don't need to re-implement them. Skip directly to §8 (R8.4) when starting fresh.

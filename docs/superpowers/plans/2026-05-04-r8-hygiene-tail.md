@@ -83,6 +83,16 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 
 ---
 
+## 3c. R8.7 backend gaps surfaced
+
+| # | Origin | File / area | Item |
+|---|--------|-------------|------|
+| 50 | smoke (R8.7) | `backend/app/engine/judge.py:58-63` (`get_judge_provider`) | Production `/judge` endpoint cannot be exercised — `get_judge_provider()` raises `NotImplementedError` by design until R6 wires the pro-model judge. Tests substitute via `app.dependency_overrides`, but a live POST returns 500. The walking-skeleton spec drops the `/judge` call (with a comment) and asserts the review-queue `all` section instead, which works without judge verdicts. Real backend gap, not a spec workaround that should rot — when R6 lands, the spec should add the `/judge` POST back and additionally assert `required_review` becomes non-empty for the corrected docs. Per CLAUDE.md model-tier-split memory, this should use `default_model_pro` (gemini-3.1-pro-preview), not the runtime extraction's `default_model_gemini` (gemini-2.5-flash). |
+| 51 | smoke (R8.7) | `backend/app/engine/recompute.py:24-56` (`vibe_check_predictions_query`) + `frontend/src/components/ReviewInboxBanner.tsx` copy | Counterintuitive interaction: per spec §4.1, the vibe-check pool excludes any doc with a saved Annotation (regardless of whether the user is "done"). After a user saves their first correction on a doc, it disappears from `/review` the instant they navigate away — there is no surface for "I corrected this once but want to come back to it". The walking-skeleton spec works around it by leaving 1 of 3 docs uncorrected, but this is purely an E2E choreography fix; the UX question stands. Possible v1.1 remedies: (a) `Annotation.needs_revisit` flag exposed via a Studio "Mark for review" button; (b) decouple "saved correction" from "vibe-check coverage" so corrections only suppress the doc once the schema is locked. Non-blocking for MVP, but worth a product call before R8 ships to integrators. |
+| 52 | smoke (R8.7) operational | `backend/app/engine/extract.py:117-130` error_message capture | When `httpx.ConnectError` fires (e.g. proxy down, DNS failure), `str(exc)` returns `''`, so `prediction.error_message` is the empty string — UI shows "errored" with no diagnostic, and inspecting the DB gives nothing. Cheapest fix: replace `str(exc)[:1900]` with `f"{type(exc).__name__}: {str(exc) or '(no message)'}"[:1900]` so at least the exception class is captured. Sweep when extract.py is next touched (R6 territory likely). |
+
+---
+
 ## 3a. R8.4 minors
 
 | # | Origin | File / area | Item |
