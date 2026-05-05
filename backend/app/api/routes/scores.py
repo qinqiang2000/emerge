@@ -140,7 +140,13 @@ async def get_review_queue(
         all_items.append(item)
         if flagged:
             required.append(item)
-        else:
+        elif pred.per_field_confidence:
+            # Spec §4.2: spot-check is "judge says these are fine, do you
+            # agree?" — that requires judge to actually have said "fine". A
+            # doc with no per_field_confidence (judge never ran, or run
+            # failed and wrote {}) is not a spot-check candidate; it stays
+            # in `all` only. Surfaced by R8.7 smoke as "Spot-check shows the
+            # doc I just corrected" before the user has triggered judge.
             up_only.append(item)
     rng = random.Random(project_id)  # deterministic per project
     spot_check = rng.sample(up_only, k=min(2, len(up_only)))

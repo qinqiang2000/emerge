@@ -78,6 +78,45 @@ async def test_review_queue_three_buckets(client, db_session, tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_review_queue_excludes_unjudged_docs_from_spot_check(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Spec §4.2: spot-check is "judge says these are fine, do you agree?".
+    A doc whose latest Prediction has no per_field_confidence (judge never
+    ran, or run failed and wrote {}) is not a spot-check candidate — it
+    only appears in `all`. Otherwise every freshly-extracted doc would
+    silently appear under "AI says fine, verify" before any judge has
+    actually said anything.
+    """
+    monkeypatch.setattr("app.services.storage.settings.storage_root", str(tmp_path))
+    h, pid = await _auth_and_project(client)
+    files = [("files", (f"{n}.pdf", io.BytesIO(b"X"), "application/pdf")) for n in "ab"]
+    docs = (
+        await client.post(f"/api/v1/projects/{pid}/documents", files=files, headers=h)
+    ).json()
+    # Doc-a: never judged (per_field_confidence={})
+    # Doc-b: judged, all up → real spot-check candidate
+    for d, conf in zip(docs, [{}, {"0": {"a": "up"}}]):
+        db_session.add(
+            Prediction(
+                document_id=d["id"],
+                model_id="m",
+                prompt_hash="h",
+                output=[{"a": 1}],
+                per_field_confidence=conf,
+                status=PredictionStatus.SUCCESS.value,
+            )
+        )
+    await db_session.commit()
+
+    body = (await client.get(f"/api/v1/projects/{pid}/review-queue", headers=h)).json()
+    # Both docs in `all`; only the judged-up one in spot_check.
+    assert {d["id"] for d in body["all"]} == {d["id"] for d in docs}
+    assert {d["id"] for d in body["spot_check"]} == {docs[1]["id"]}
+    assert body["required_review"] == []
+
+
+@pytest.mark.asyncio
 async def test_get_score_with_unwired_rerun_treats_ce_pool_as_perfect(
     client, db_session, tmp_path, monkeypatch
 ):
