@@ -64,6 +64,26 @@ describe("FeedbackTestForm — submit flow", () => {
     );
   });
 
+  it("does not smuggle the session JWT onto the public-feedback POST", async () => {
+    // The shared axios instance carries Authorization for authenticated
+    // routes. Posts to the public /extract/{api_code}/feedback endpoint
+    // must not bleed that session credential.
+    const post = vi
+      .spyOn(api, "post")
+      .mockResolvedValue({ data: { counterexample_id: 1 } });
+    setup();
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: /send test feedback/i }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const opts = post.mock.calls[0]![2] as
+      | { headers?: Record<string, unknown> }
+      | undefined;
+    expect(opts?.headers).toBeDefined();
+    // axios drops headers with value `undefined`. The presence of a
+    // truthy Authorization here would be a JWT bleed.
+    expect(opts?.headers?.Authorization ?? null).toBeFalsy();
+  });
+
   it("parses numeric correct_value as JSON", async () => {
     const post = vi
       .spyOn(api, "post")
@@ -223,6 +243,33 @@ describe("FeedbackTestForm — input validation", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /send test feedback/i }));
     expect(post).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /request id must be a positive integer/i,
+    );
+  });
+
+  it("shows an entity-index-specific error (not the request_id message) on bad entity_index", () => {
+    const post = vi.spyOn(api, "post").mockResolvedValue({ data: {} });
+    setup();
+    fireEvent.change(screen.getByLabelText(/api key/i), {
+      target: { value: "ek_abc" },
+    });
+    fireEvent.change(screen.getByLabelText(/request id/i), {
+      target: { value: "1" },
+    });
+    fireEvent.change(screen.getByLabelText(/entity index/i), {
+      target: { value: "-1" },
+    });
+    fireEvent.change(screen.getByLabelText(/field path/i), {
+      target: { value: "total" },
+    });
+    fireEvent.change(screen.getByLabelText(/correct value/i), {
+      target: { value: "1234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send test feedback/i }));
+    expect(post).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /entity index must be a non-negative integer/i,
+    );
   });
 });

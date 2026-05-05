@@ -63,7 +63,11 @@ export function FeedbackTestForm({ apiCode }: { apiCode: string }) {
     };
   }, []);
 
-  const canSubmit = apiKey.length > 0 && fieldPath.length > 0 && !submitting;
+  const canSubmit =
+    apiKey.length > 0 &&
+    requestIdStr.length > 0 &&
+    fieldPath.length > 0 &&
+    !submitting;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,11 +81,7 @@ export function FeedbackTestForm({ apiCode }: { apiCode: string }) {
     }
     const entityIndexNum = Number(entityIndexStr);
     if (!Number.isInteger(entityIndexNum) || entityIndexNum < 0) {
-      setErrorKey("feedback.errors.request_id_must_be_positive");
-      return;
-    }
-    if (fieldPath.length === 0) {
-      setErrorKey("feedback.errors.field_path_required");
+      setErrorKey("feedback.errors.entity_index_must_be_non_negative");
       return;
     }
 
@@ -107,10 +107,20 @@ export function FeedbackTestForm({ apiCode }: { apiCode: string }) {
 
     setSubmitting(true);
     try {
+      // The shared axios instance carries an Authorization JWT for
+      // authenticated routes. The public /extract/{api_code}/feedback
+      // endpoint authenticates via X-Api-Key only — explicitly drop the
+      // JWT so we do not smuggle a session credential onto the public
+      // boundary. axios v1 drops headers whose value is `undefined`.
       const resp = await api.post(
         `/extract/${apiCode}/feedback`,
         payload,
-        { headers: { "X-Api-Key": apiKey } },
+        {
+          headers: {
+            "X-Api-Key": apiKey,
+            Authorization: undefined as unknown as string,
+          },
+        },
       );
       const id = (resp.data as { counterexample_id?: number })?.counterexample_id;
       setSuccessId(typeof id === "number" ? id : null);
