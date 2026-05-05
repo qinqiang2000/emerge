@@ -20,8 +20,9 @@ Read in this order:
 1. `CLAUDE.md`
 2. `docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md` (this file)
 3. `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md` (authoritative R8 overlay)
-4. For product semantics only when needed: `docs/superpowers/specs/2026-05-02-overall-design.md`
-5. For historical frontend foundation details only when needed: `docs/superpowers/plans/2026-05-03-r8-ui.md`
+4. `docs/superpowers/plans/2026-05-04-r8-hygiene-tail.md` (deferred fixups; sweep matching items as you touch the files in R8.3+)
+5. For product semantics only when needed: `docs/superpowers/specs/2026-05-02-overall-design.md`
+6. For historical frontend foundation details only when needed: `docs/superpowers/plans/2026-05-03-r8-ui.md`
 
 Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API key plaintext, tokens, or passwords. Snippets use placeholders such as `EMERGE_API_KEY` only.
 
