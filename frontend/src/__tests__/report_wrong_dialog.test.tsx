@@ -168,3 +168,30 @@ describe("ReportWrongFieldDialog — store wiring", () => {
     expect(typeof useStudio.getState().reportWrong).toBe("function");
   });
 });
+
+describe("ReportWrongFieldDialog — empty-state and non-string seeding", () => {
+  it("disables Save and shows an inline error when the doc has no prediction", () => {
+    useStudio.setState({
+      doc: { ...DOC, latest_prediction: null },
+      draft: [],
+      loading: false,
+      saving: false,
+      error: null,
+    });
+    renderDialog({ currentValue: "100" });
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /this document has no prediction yet/i,
+    );
+  });
+
+  it("seeds the input from a non-string currentValue via JSON.stringify", () => {
+    renderDialog({
+      entityIndex: 0,
+      fieldName: "total",
+      currentValue: { qty: 2, unit: "kg" },
+    });
+    const input = screen.getByLabelText(/corrected value/i) as HTMLInputElement;
+    expect(input.value).toBe('{"qty":2,"unit":"kg"}');
+  });
+});
