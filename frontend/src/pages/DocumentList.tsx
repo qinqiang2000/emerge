@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { ReadinessPanel } from "@/components/ReadinessPanel";
+import { ReviewInboxBanner } from "@/components/ReviewInboxBanner";
 import { Button } from "@/components/ui/Button";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/Table";
 import { useT } from "@/i18n/useT";
@@ -49,6 +50,9 @@ export function DocumentListPage() {
       <main className="mx-auto max-w-5xl space-y-4 p-6">
       {Number.isFinite(projectId) ? (
         <ReadinessPanel projectId={projectId} />
+      ) : null}
+      {Number.isFinite(projectId) ? (
+        <ReviewInboxBanner projectId={projectId} />
       ) : null}
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-fg-primary">

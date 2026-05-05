@@ -1,14 +1,16 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useMatch } from "react-router-dom";
 
 import { useT } from "@/i18n/useT";
 import { cn } from "@/lib/cn";
 
 export function ProjectSubNav({ projectId }: { projectId: number }) {
   const t = useT();
-  const { pathname } = useLocation();
-  const onSchema = pathname.endsWith(`/projects/${projectId}/schema`);
-  const onApi = pathname.endsWith(`/projects/${projectId}/api-console`);
-  const onDocuments = !onSchema && !onApi;
+  // useMatch tolerates trailing slashes and nested children; pathname.endsWith
+  // would silently flip every tab to inactive on `/projects/7/api-console/`.
+  const onSchema = useMatch("/projects/:id/schema") !== null;
+  const onApi = useMatch("/projects/:id/api-console") !== null;
+  const onReview = useMatch("/projects/:id/review") !== null;
+  const onDocuments = !onSchema && !onApi && !onReview;
 
   return (
     <nav className="border-b border-border-default">
@@ -17,6 +19,11 @@ export function ProjectSubNav({ projectId }: { projectId: number }) {
           to={`/projects/${projectId}`}
           active={onDocuments}
           label={t("nav.documents")}
+        />
+        <NavTab
+          to={`/projects/${projectId}/review`}
+          active={onReview}
+          label={t("nav.review")}
         />
         <NavTab
           to={`/projects/${projectId}/schema`}

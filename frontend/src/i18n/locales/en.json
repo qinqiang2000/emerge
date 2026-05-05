@@ -2,7 +2,8 @@
   "nav": {
     "documents": "Documents",
     "schema": "Schema",
-    "api": "API"
+    "api": "API",
+    "review": "Review"
   },
   "api_console": {
     "title": "API Console",
@@ -200,6 +201,25 @@
       "locked": "Locked"
     },
     "no_feedback_callout": "No production feedback yet — readiness reflects Lab evidence only. The first integrator call will populate regression data."
+  },
+  "review": {
+    "title": "Review Inbox",
+    "loading": "Loading review queue…",
+    "required_count": "{{count}} need review",
+    "spot_check_count": "{{count}} spot-checks",
+    "all_count": "{{count}} docs total",
+    "review_next": "Review next",
+    "all_caught_up": "All caught up — nothing in the review queue right now.",
+    "page_title": "Review queue",
+    "section_required": "Required review",
+    "section_spot_check": "Spot-check",
+    "section_all": "All documents",
+    "section_required_hint": "Documents where the judge flagged at least one field.",
+    "section_spot_check_hint": "Random sample from the vibe-check set with no flagged fields.",
+    "section_all_hint": "Every document in the current vibe-check set.",
+    "section_required_empty": "All caught up — no flagged documents.",
+    "section_spot_check_empty": "No spot-check picks for this project yet.",
+    "section_all_empty": "No documents in the vibe-check set yet."
   },
   "common": {
     "cancel": "Cancel",

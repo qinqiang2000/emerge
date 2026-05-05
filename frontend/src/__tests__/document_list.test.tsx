@@ -6,7 +6,9 @@ import { api } from "@/lib/api";
 import { DocumentListPage } from "@/pages/DocumentList";
 import { useDocuments, type DocumentRow } from "@/stores/documents";
 import { useReadiness } from "@/stores/readiness";
+import { useReview } from "@/stores/review";
 import type { APIReadinessOut } from "@/types/readiness";
+import type { ReviewQueueOut } from "@/types/review";
 
 const READINESS_STUB: APIReadinessOut = {
   quality_estimate: {
@@ -42,10 +44,19 @@ const READINESS_STUB: APIReadinessOut = {
   warnings: [],
 };
 
+const REVIEW_STUB: ReviewQueueOut = {
+  required_review: [],
+  spot_check: [],
+  all: [],
+};
+
 function mockGet(handler?: (url: string) => unknown) {
   return vi.spyOn(api, "get").mockImplementation((url: string) => {
     if (url.endsWith("/readiness")) {
       return Promise.resolve({ data: READINESS_STUB });
+    }
+    if (url.endsWith("/review-queue")) {
+      return Promise.resolve({ data: REVIEW_STUB });
     }
     if (handler) {
       const data = handler(url);
@@ -100,6 +111,7 @@ async function settle() {
     expect(s.uploading).toBe(false);
     expect(s.extracting).toBe(false);
     expect(useReadiness.getState().loading).toBe(false);
+    expect(useReview.getState().loading).toBe(false);
   });
 }
 
@@ -113,6 +125,7 @@ describe("DocumentListPage", () => {
       error: null,
     });
     useReadiness.setState({ data: READINESS_STUB, loading: false, error: null });
+    useReview.setState({ data: REVIEW_STUB, loading: false, error: null });
     mockGet(() => [UPLOADED, EXTRACTED]);
   });
   afterEach(() => {
@@ -125,6 +138,7 @@ describe("DocumentListPage", () => {
       error: null,
     });
     useReadiness.setState({ data: null, loading: false, error: null });
+    useReview.setState({ data: null, loading: false, error: null });
   });
 
   it("renders filename and status for each row", async () => {

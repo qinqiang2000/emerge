@@ -35,7 +35,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 | 18 | gate-review (R8.1.e) | Test helpers | `settle()` helper copy-pasted in 3+ specs; extract to `__tests__/_helpers/settle.ts`. |
 | 19 | gate-review (R8.1.e) | `i18n/locales/en.json` | `schema.tab_form` and `schema.lock_status_blocked` defined but unused (`tab_chat` is the explicit chat-mode placeholder per overlay; keep). |
 | 20 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx:163-168` | Notes Textarea renders even when `draft.length === 0` — cosmetic inconsistency with no-fields empty state. |
-| 22 | gate-review (sub-nav) | `components/ProjectSubNav.tsx:9-11` + `__tests__/project_sub_nav.test.tsx` | Trailing-slash matcher fragility — `pathname.endsWith` would mark all tabs inactive on `/projects/7/api-console/`. Add hardening test or switch to `useMatch`. |
+| ~~22~~ | gate-review (sub-nav) | `components/ProjectSubNav.tsx:9-11` + `__tests__/project_sub_nav.test.tsx` | ~~Trailing-slash matcher fragility — `pathname.endsWith` would mark all tabs inactive on `/projects/7/api-console/`. Add hardening test or switch to `useMatch`.~~ Resolved — see §4. |
 | 23 | gate-review (sub-nav) | `pages/SchemaEditor.tsx`, `Studio.tsx` | Cosmetic: success branches use outdented fragments; let prettier or wrapping div tidy. |
 | 25 | gate-review (auth boot-prime) | `stores/auth.ts:19, :25` | Double-read of `emerge.token` from localStorage — now redundant with `bootAuthFromStorage()` in `lib/api.ts`. Cleanup candidate. |
 | 26 | gate-review (auth boot-prime) | `__tests__/api.test.ts` | `bootAuthFromStorage` tests only exercise the helper, not the import-time auto-call. Add `vi.resetModules() + dynamic import()` test. |
@@ -84,6 +84,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 - ~~(pages-col)~~ Backend `Document.page_count` always 0 → frontend dropped the column → fixed in `80458c8` + `82be98d`.
 - ~~(8)~~ `stores/documents.ts` manual `Content-Type: multipart/form-data` dropped (axios sets the boundary itself) → fixed in the R8.3 readiness-panel commit; tests updated to assert no manual header.
 - ~~(17)~~ Cross-store `emergeCode()` lifted to `lib/api.ts` as `emergeCode` + `emergeErrorKey` helpers; all 6 stores migrated → fixed in the R8.3 readiness-panel commit.
+- ~~(22)~~ ProjectSubNav trailing-slash fragility → switched from `pathname.endsWith` to `useMatch` (path-pattern based, tolerant of trailing slashes and nested children). Test asserts Review tab href + active state. Fixed in the R8.4 review-inbox commit.
 
 ---
 

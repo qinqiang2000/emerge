@@ -6,6 +6,7 @@ import { ApiConsolePage } from "./pages/ApiConsole";
 import { DocumentListPage } from "./pages/DocumentList";
 import { ProjectCreatePage } from "./pages/ProjectCreate";
 import { ProjectListPage } from "./pages/ProjectList";
+import { ReviewInboxPage } from "./pages/ReviewInbox";
 import { SchemaEditorPage } from "./pages/SchemaEditor";
 import { StudioPage } from "./pages/Studio";
 import { LoginPage } from "./pages/Login";
@@ -79,6 +80,14 @@ export default function App() {
               element={
                 <AuthGate>
                   <ApiConsolePage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/review"
+              element={
+                <AuthGate>
+                  <ReviewInboxPage />
                 </AuthGate>
               }
             />
