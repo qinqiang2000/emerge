@@ -194,6 +194,41 @@ describe("DocumentListPage", () => {
     await settle();
   });
 
+  it("upload + extract trigger readiness + review-queue refresh", async () => {
+    // R8.7 hygiene-tail: ReadinessPanel + ReviewInboxBanner used to
+    // display stale state ("0 docs total") right after a fresh upload
+    // or extract until the user reloaded. The documents store now
+    // fires both stores' load() in fire-and-forget mode after each
+    // mutation; pin both code paths.
+    const post = vi.spyOn(api, "post").mockResolvedValue({ data: [UPLOADED] });
+    const get = mockGet(() => [UPLOADED, EXTRACTED]);
+
+    renderPage();
+    await settle();
+
+    const file = new File(["x"], "new.pdf", { type: "application/pdf" });
+    const input = screen.getByTestId(
+      "document-upload-input",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: /re-extract/i }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    await settle();
+
+    const urls = get.mock.calls.map((c) => c[0] as string);
+    // Both readiness and review-queue should be hit at least twice
+    // (initial mount + after upload + after extract = at least 2 each).
+    expect(
+      urls.filter((u) => u.endsWith("/readiness")).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      urls.filter((u) => u.endsWith("/review-queue")).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
   it("empty state shows helper copy", async () => {
     vi.restoreAllMocks();
     useDocuments.setState({

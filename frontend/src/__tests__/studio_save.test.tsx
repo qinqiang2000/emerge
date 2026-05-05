@@ -132,4 +132,33 @@ describe("StudioPage minimal correction save", () => {
       screen.getByRole("button", { name: /save correction/i }),
     ).toBeDisabled();
   });
+
+  it("save triggers readiness + review-queue refresh (auto-refresh wiring)", async () => {
+    // R8.7 hygiene-tail: ReadinessPanel + ReviewInboxBanner used to show
+    // stale state until the user reloaded the page after a correction.
+    // The studio store now fires both stores' load() right after save.
+    // Pin it: a successful save must hit both /readiness and
+    // /review-queue at least once.
+    vi.spyOn(api, "post").mockResolvedValue({ data: { id: 123 } });
+    const get = vi.spyOn(api, "get").mockImplementation((url: string) => {
+      if (url.endsWith("/readiness")) return Promise.resolve({ data: {} });
+      if (url.endsWith("/review-queue"))
+        return Promise.resolve({
+          data: { required_review: [], spot_check: [], all: [], schema_locked: true },
+        });
+      return Promise.resolve({ data: SEEDED_DOC });
+    });
+
+    renderStudio();
+    await settle();
+    fireEvent.change(screen.getByDisplayValue("100"), {
+      target: { value: "200" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
+    await settle();
+
+    const urls = get.mock.calls.map((c) => c[0] as string);
+    expect(urls).toContain("/api/v1/projects/7/readiness");
+    expect(urls).toContain("/api/v1/projects/7/review-queue");
+  });
 });

@@ -1,6 +1,20 @@
 import { create } from "zustand";
 
 import { api, emergeErrorKey } from "@/lib/api";
+import { useReadiness } from "@/stores/readiness";
+import { useReview } from "@/stores/review";
+
+// After a document mutation, ReadinessPanel + ReviewInboxBanner state
+// becomes stale (vibe-check pool changes, evidence counts shift). The
+// stores don't subscribe to each other, so we explicitly invalidate
+// them here. Surfaced by R8.7 smoke as "panels show 0 docs after I
+// just uploaded one — until I reload the page". Fire-and-forget so a
+// transient panel-fetch failure doesn't block the document mutation
+// path itself.
+function refreshProjectPanels(projectId: number): void {
+  void useReadiness.getState().load(projectId);
+  void useReview.getState().load(projectId);
+}
 
 export type DocumentRow = {
   id: number;
@@ -52,6 +66,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       // a FormData body. Setting it manually drops the boundary suffix.
       await api.post(`/api/v1/projects/${projectId}/documents`, fd);
       await get().load(projectId);
+      refreshProjectPanels(projectId);
     } catch (e) {
       set({ error: emergeErrorKey(e) });
     } finally {
@@ -64,6 +79,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
     try {
       await api.post(`/api/v1/projects/${projectId}/extract`);
       await get().load(projectId);
+      refreshProjectPanels(projectId);
     } catch (e) {
       set({ error: emergeErrorKey(e) });
     } finally {

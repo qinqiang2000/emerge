@@ -1,10 +1,21 @@
 import { create } from "zustand";
 
 import { api, emergeErrorKey } from "@/lib/api";
+import { useReadiness } from "@/stores/readiness";
+import { useReview } from "@/stores/review";
 import type {
   PerFieldConfidence,
   PerFieldEvidence,
 } from "@/types/studio";
+
+// Mirror of documents.ts:refreshProjectPanels — saving an Annotation
+// shifts the vibe-check pool (in Locked mode it removes the doc; in
+// Draft mode the pool stays open but evidence counts change), so the
+// readiness + review-queue surfaces need to refetch. Fire-and-forget.
+function refreshProjectPanels(projectId: number): void {
+  void useReadiness.getState().load(projectId);
+  void useReview.getState().load(projectId);
+}
 
 export type EntityOutput = Record<string, unknown>;
 
@@ -98,6 +109,7 @@ export const useStudio = create<StudioState>((set, get) => ({
         },
       );
       await get().load(projectId, doc.id);
+      refreshProjectPanels(projectId);
     } catch (e) {
       set({ error: emergeErrorKey(e) });
     } finally {
@@ -132,6 +144,7 @@ export const useStudio = create<StudioState>((set, get) => ({
         },
       );
       await get().load(projectId, doc.id);
+      refreshProjectPanels(projectId);
     } catch (e) {
       set({ error: emergeErrorKey(e) });
     } finally {
