@@ -82,9 +82,18 @@ async def publish(
             message_override=f"api_code '{payload.api_code}' already in use.",
         )
 
+    # Pure api_code rename (same published_version_id, project already
+    # published) keeps api_published_at unchanged — the UI shows it as
+    # "Activated", and re-stamping on rename misleads the user into
+    # thinking Lab was promoted. Only stamp when the version actually
+    # changes, or when (re-)publishing after an unpublish that cleared
+    # the timestamp.
+    is_revision = p.published_version_id != v.id
+    is_first_or_resume = p.api_published_at is None
     p.api_code = payload.api_code
     p.published_version_id = v.id
-    p.api_published_at = datetime.now(tz=timezone.utc)
+    if is_revision or is_first_or_resume:
+        p.api_published_at = datetime.now(tz=timezone.utc)
     await session.commit()
     await session.refresh(p)
     return ProjectOut.model_validate(p)

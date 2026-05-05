@@ -1,7 +1,9 @@
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+from app.schemas._datetime import utc_aware
 
 _API_CODE = re.compile(r"^[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$|^[a-z0-9]$")
 
@@ -44,3 +46,8 @@ class ApiKeyOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("created_at", "last_used_at")
+    def _serialize_dt(self, v: datetime | None) -> str | None:
+        aware = utc_aware(v)
+        return aware.isoformat() if aware else None

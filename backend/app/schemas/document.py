@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+
+from app.schemas._datetime import utc_aware
 
 
 class DocumentOut(BaseModel):
@@ -14,6 +16,11 @@ class DocumentOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("created_at")
+    def _serialize_dt(self, v: datetime | None) -> str | None:
+        aware = utc_aware(v)
+        return aware.isoformat() if aware else None
 
 
 class DocumentDetailOut(DocumentOut):

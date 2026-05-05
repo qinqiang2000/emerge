@@ -547,3 +547,90 @@ async def test_rollback_rejects_unlocked_or_foreign_version(client, db_session):
         headers=h,
     )
     assert res.status_code == 409
+
+
+async def _publish_simple(client, db_session, email: str, api_code: str = "ja-rcpt"):
+    """Helper: register user, create project, lock active version, publish."""
+    h, pid = await _auth_and_project(client, email)
+    await client.patch(
+        f"/api/v1/projects/{pid}/schema",
+        json={
+            "schema": [{"name": "shop_name", "type": "string", "description": "店名"}],
+            "global_notes": "",
+            "model_id": "m",
+        },
+        headers=h,
+    )
+    from app.models.project import Project
+    from app.models.project_version import ProjectVersion
+    from sqlalchemy import select
+
+    proj = (await db_session.execute(select(Project).where(Project.id == pid))).scalar_one()
+    v = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == proj.active_version_id)
+        )
+    ).scalar_one()
+    v.locked = True
+    await db_session.commit()
+    res = await client.post(
+        f"/api/v1/projects/{pid}/publish", json={"api_code": api_code}, headers=h
+    )
+    assert res.status_code == 200
+    return h, pid, res.json()
+
+
+@pytest.mark.asyncio
+async def test_published_at_serialized_with_timezone_offset(client, db_session):
+    """JS new Date() reads naive ISO as local time; we must always emit
+    explicit offset so /api/v1/projects/* timestamps render as UTC."""
+    _, _, body = await _publish_simple(client, db_session, "tz@tz.com")
+    api_pub = body["api_published_at"]
+    created = body["created_at"]
+    # ISO 8601 with offset ends in "Z" or "+HH:MM" / "-HH:MM"
+    assert api_pub.endswith("Z") or api_pub[-6] in ("+", "-"), api_pub
+    assert created.endswith("Z") or created[-6] in ("+", "-"), created
+
+
+@pytest.mark.asyncio
+async def test_rename_api_code_keeps_api_published_at(client, db_session):
+    """Pure rename (same published_version_id, different api_code) must
+    not bump api_published_at. Re-stamping makes the UI claim a fresh
+    publish event when no Lab promotion happened (R8.2 smoke #B)."""
+    h, pid, first = await _publish_simple(client, db_session, "rn@rn.com", "ja-rcpt")
+    first_published_at = first["api_published_at"]
+    first_version_id = first["published_version_id"]
+
+    # Same project_version_id (the one we just published), new api_code.
+    res = await client.post(
+        f"/api/v1/projects/{pid}/publish",
+        json={"api_code": "ja-rcpt-v2", "project_version_id": first_version_id},
+        headers=h,
+    )
+    assert res.status_code == 200
+    after = res.json()
+    assert after["api_code"] == "ja-rcpt-v2"
+    assert after["published_version_id"] == first_version_id
+    assert after["api_published_at"] == first_published_at, (
+        "rename should not touch api_published_at"
+    )
+
+
+@pytest.mark.asyncio
+async def test_re_publish_after_unpublish_re_stamps_api_published_at(
+    client, db_session
+):
+    """If api_published_at was cleared by unpublish, re-publishing the same
+    version DOES re-stamp it — this is the integrator-visible 'now serving'
+    moment."""
+    h, pid, first = await _publish_simple(client, db_session, "rp@rp.com", "ja-rcpt")
+    first_version_id = first["published_version_id"]
+    await client.post(f"/api/v1/projects/{pid}/unpublish", headers=h)
+
+    res = await client.post(
+        f"/api/v1/projects/{pid}/publish",
+        json={"api_code": "ja-rcpt", "project_version_id": first_version_id},
+        headers=h,
+    )
+    assert res.status_code == 200
+    assert res.json()["api_published_at"] is not None
