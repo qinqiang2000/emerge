@@ -1,7 +1,7 @@
 # R8 continuation handoff — R8.3 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.2 manual smoke + backend tz/rename fixes)
+Last refreshed: 2026-05-05 (post R8.3 readiness panel + manual smoke + hygiene 8/17 resolved)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -32,7 +32,7 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    d0d53ca fix(api): apply UTC datetime serializer to remaining Out schemas
+HEAD:    dd846d2 docs(hygiene): track R8.3 smoke finding (44) on quality CI with no obs
 status:  clean
 ```
 
@@ -48,9 +48,16 @@ R8 commits remain on `r8-productization-mvp`, not in local or remote `main`. Con
 
 **Plus two backend fixes from R8.2 manual smoke** (`e7edcdf` + `d0d53ca`): UTC offset on serialized datetimes (7 Out schemas) + `publish()` no longer bumps `api_published_at` on pure rename.
 
+**R8.3 — API Readiness Panel**: `useReadiness` Zustand store, `ReadinessPanel` component, `types/readiness.ts` mirror, full `errors.readiness.*` i18n catalog (9 backend slugs). Panel mounts at the top of `/projects/:id` (above Document table) AND inside `/projects/:id/api-console` (above Production pointer). Hard rules verified: `counterexamples_total === 0` → "No production feedback yet" (never `100%`); quality always shows CI band + (N obs · vibe-check K); risky fields top-5 with `+N more`; raw slugs never reach the user; unknown slugs fall back to humanised + `console.warn`. Plus follow-up commit `88b9836` after gate review: distinct copy per `regression_health.status`, null-safe `passing` approximation, cross-project race fix in `useReadiness.load()`, dropped redundant `KNOWN_*` whitelists. Plus hygiene sweeps in the same commit: (8) drop manual `Content-Type: multipart/form-data` from upload (axios sets the boundary); (17) lift `emergeCode`/`emergeErrorKey` helpers from 6 stores to `lib/api.ts`. Pushed back on reviewer suggestion to surface backend `schema_maturity.message` (English-only static copy that conflicts with the i18n red line; the translated `readiness.maturity.<status>` catalog already conveys the recommended action).
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+dd846d2 docs(hygiene): track R8.3 smoke finding (44) on quality CI with no obs
+88b9836 fix(frontend): apply R8.3 gate-review fixes to ReadinessPanel
+a20a42e feat(frontend): API Readiness panel with CI band and no-feedback semantics
+664c24a docs: persist R8 hygiene tail + wire into handoff pre-read
+79af378 docs(handoff): refresh after R8.1 + R8.2 + backend tz/rename fixes
 d0d53ca fix(api): apply UTC datetime serializer to remaining Out schemas
 e7edcdf fix(api): UTC offset on serialized datetimes + don't bump api_published_at on pure rename
 035031c fix(frontend): split Activate and Rename inputs in API Console
@@ -81,65 +88,85 @@ b813e6f docs: add R8 productization MVP overlay plan
 
 ```text
 cd frontend && npm run lint                : clean
-cd frontend && npm test                    : 13 files / 56 tests passed
-cd frontend && npm run build               : 423 KB / 134 KB gzipped
+cd frontend && npm test                    : 14 files / 69 tests passed
+cd frontend && npm run build               : 432 KB / 136 KB gzipped
 cd backend  && uv run pytest -q            : 237 passed, 2 skipped, 4 warnings
 ```
 
-### Manual smoke completed (R8.1 + R8.2)
+### Manual smoke completed (R8.1 + R8.2 + R8.3)
 
 A real walking-path smoke ran against `dogfood@example.com` on project test1 (built from `japan_receipt` builtin, 2 Japanese parking-receipt PDFs uploaded + extracted with Gemini):
 
 - R8.1: register → create → upload → extract → Studio edit + save → reload (override visible) → Schema lock + unlock. Found auth race + Pages-column-always-0 bug; both fixed in `80458c8`/`82be98d`.
 - R8.2: lock → API tab → Activate → Create key (modal plaintext + Esc-blocked + ack-gated dismiss) → reload (prefix-only) → Rename → Unpublish → curl `/extract/japan-receipts-v2` → 403 → Re-publish → Revoke. Found timezone drift + `api_published_at` re-stamp on rename; both fixed in `e7edcdf`/`d0d53ca`.
+- R8.3 (chrome-devtools-mcp driven): fresh empty project (`r83-smoke-empty`, project 3) → all 3 publish_blockers translated, no raw slugs, no `100%`, regression reads "No production feedback yet"; published `test1` (project 2) → blockers section disappears, schema reads "Locked"; light + dark theme renders both panels cleanly. Found one new UX hygiene item (44): quality reads ~80% ± 23% with 0 obs because of Beta prior — backend should surface null on `observation_count === 0`. Non-blocking; tracked in hygiene tail §3.
 
-Open UX findings from those smokes are tracked in TaskList #8 and were not stop-the-line. See §13 below for the full hygiene tail.
+Open UX findings from those smokes are tracked in the hygiene tail. See §13 below for the full carry-forward.
 
 ---
 
-## 2. R8.3 entry point — read this then dive in
+## 2. R8.4 entry point — read this then dive in
 
-Authoritative R8.3 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.3 — API Readiness Panel** (around lines 468–537).
+Authoritative R8.4 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.4 — Review Inbox** (around lines 540–601).
 
-R8.3 in one paragraph: render `GET /api/v1/projects/{pid}/readiness` as a product-facing trust surface with quality + CI band, evidence counts, schema maturity, regression health (with explicit "No production feedback yet" when `counterexamples_total === 0` — never `100%`), risky fields top-5, and translated publish_blockers / warnings. Mount above Document table on `/projects/:id` AND inside `/projects/:id/api-console`. Single store + single component reused in both places.
+R8.4 in one paragraph: surface `GET /api/v1/projects/{pid}/review-queue` as a banner on `/projects/:id` (between the R8.3 ReadinessPanel and the Document table) and as a dedicated `/projects/:id/review` page. Banner shows three counts (required_review · spot_check · all) and a "Review next" button that opens the first item in `required_review` (or first `spot_check` if required is empty). Empty queue reads "All caught up", never "0 of 0". Dedicated page renders three sections (Required review / Spot-check / All) backed by the same store. Each row shows filename + flagged_fields (already capped at 3 by backend).
 
 Suggested Claude Code prompt for the next session:
 
 ```text
-Continue R8 Productization MVP on branch r8-productization-mvp.
+Continue R8 Productization MVP on branch r8-productization-mvp at
+/Users/qinqiang02/colab/codespace/ai/emerge.
 
-Pre-read in order:
-- CLAUDE.md
-- docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md (this file)
-- docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay)
-- docs/superpowers/specs/2026-05-02-overall-design.md §4.5 for readiness semantics
+Pre-read in order before any work:
+1. CLAUDE.md
+2. docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md
+3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.4
+4. docs/superpowers/plans/2026-05-04-r8-hygiene-tail.md
+5. docs/superpowers/specs/2026-05-02-overall-design.md §8.1 (review queue)
 
 Verify health at HEAD before starting:
 - cd frontend && npm run lint && npm test && npm run build
-- cd backend && uv run pytest -q
+- cd backend  && uv run pytest -q
 
-Then implement only Phase R8.3 from the overlay plan (API Readiness Panel,
-~one commit). Convention from R8.1 and R8.2:
-- TDD: write the spec test first, watch it RED, implement, watch GREEN
-- Use existing patterns: useT() for every visible string, semantic Tailwind
-  tokens only, EmergeError → errors.<code> i18n, Zustand store with rows /
-  loading / error fields
-- After each commit, dispatch a superpowers:code-reviewer subagent for gate
-  review (this is a standing user instruction; see memory file
-  feedback_gate_review_subagent.md)
-- On readiness blockers / warnings: mirror every slug from
-  backend/app/services/readiness.py into en.json under errors.readiness.*;
-  raw slugs must NEVER reach the user
+Then implement only Phase R8.4 (Review Inbox) per the overlay, one commit.
+Conventions established in R8.1 / R8.2 / R8.3:
+- TDD: spec test first, watch RED, implement, watch GREEN
+- useT() for every visible string; semantic Tailwind tokens only
+- EmergeError → errors.<code> i18n; Zustand store with data/rows /
+  loading / error using emergeErrorKey from lib/api (lifted in R8.3)
+- After each commit, dispatch a code-reviewer via the
+  superpowers:requesting-code-review skill (NOT a bare general-purpose
+  agent — last time the bare agent missed 5 Important issues that the
+  proper skill template caught). Standing instruction; see memory
+  feedback_gate_review_subagent.md.
+- When you touch a file, sweep matching items from the hygiene tail in
+  the same commit. Mirror every visible string into en.json.
 
-R8.3 hard rules (from CLAUDE.md + spec §4.5):
-- When regression_health.counterexamples_total === 0, render "No production
-  feedback yet". NEVER render 100%.
-- Quality always shows CI band: point% ± half-CI% (N obs · vibe-check K).
-- Risky fields: top 5 sorted by count desc, "+N more" affordance.
+R8.4 hard rules (CLAUDE.md + spec §8.1):
+- ReviewInboxBanner mounts on /projects/:id BETWEEN the ReadinessPanel
+  (R8.3, top of page) and the Document table.
+- Banner shows three counts: required_review · spot_check · all.
+- "Review next" opens first required_review item, falling back to first
+  spot_check if required is empty.
+- When both required_review and spot_check are empty, button is disabled
+  and copy reads "All caught up" (NEVER "0 of 0").
+- Dedicated /projects/:id/review page renders three sections (Required
+  review / Spot-check / All), each row showing filename + flagged_fields
+  (backend already caps flagged_fields at 3).
+- Same store backs both surfaces (banner + page).
 
-Do not implement Review Inbox, Field Evidence, Partial Feedback, AutoResearch
-viewer, MatchingProject, VerificationProject, bbox/coordinate UI, real PDF
-preview. Do not read or print secrets.
+Out of scope: AutoResearch viewer, Field Evidence (R8.5), Partial
+Feedback (R8.6), MatchingProject, VerificationProject, bbox/coordinate
+UI, real PDF preview. Never read or print secrets.
+
+R8.3 context the new session should know:
+- ReadinessPanel mounts at top of /projects/:id and inside
+  /projects/:id/api-console.
+- emergeCode + emergeErrorKey helpers live in lib/api.ts (use them).
+- Manual smoke verified R8.3 on dogfood@example.com / Pass1234! against
+  fresh empty project + published `test1`; light + dark both clean.
+- Hygiene tail item (44): quality % renders ~80% ± 23% on 0 obs due to
+  Beta prior; flagged for next backend touch (R8.5 territory).
 ```
 
 ---
@@ -169,14 +196,14 @@ Prompt 1 (DONE)  => R8.0 frontend foundation
 Prompt 2 (DONE)  => R8.1 Product shell + sub-nav + auth boot-prime + Pages drop
 Prompt 3 (DONE)  => R8.2 API Console + publish flow + one-time API key reveal
                     + backend tz / api_published_at fixes
-Prompt 4 (NEXT)  => R8.3 API Readiness Panel
-Prompt 5         => R8.4 Review Inbox
+Prompt 4 (DONE)  => R8.3 API Readiness Panel + gate-review fixes + hygiene 8/17
+Prompt 5 (NEXT)  => R8.4 Review Inbox
 Prompt 6         => R8.5 Field Evidence display in Studio (incl small backend payload gap)
 Prompt 7         => R8.6 Partial Feedback UI, public shape + in-Lab reuse
 Prompt 8         => R8.7 Walking Skeleton E2E
 ```
 
-§5 below ("Prompt 2 — R8.1 Product shell") is preserved as historical reference for the patterns established in R8.1; new sessions don't need to re-implement it. Skip directly to §7 (R8.3) when starting fresh.
+§5–§7 below preserve the historical R8.1 / R8.2 / R8.3 prompts as reference for the patterns those phases established; new sessions don't need to re-implement them. Skip directly to §8 (R8.4) when starting fresh.
 
 ---
 
