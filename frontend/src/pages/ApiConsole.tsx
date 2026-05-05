@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiKeyRevealModal } from "@/components/ApiKeyRevealModal";
+import { FeedbackTestForm } from "@/components/FeedbackTestForm";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { ReadinessPanel } from "@/components/ReadinessPanel";
 import { Badge } from "@/components/ui/Badge";
@@ -353,7 +354,10 @@ export function ApiConsolePage() {
 
         <SnippetsPanel apiCode={project.api_code} />
 
-        <FeedbackExamplePanel />
+        <FeedbackExamplePanel
+          apiCode={project.api_code}
+          hasApiKey={apiKeys.length > 0}
+        />
       </main>
 
       {revealedKey ? (
@@ -497,11 +501,17 @@ function Snippet({ label, body }: { label: string; body: string }) {
   );
 }
 
-function FeedbackExamplePanel() {
+function FeedbackExamplePanel({
+  apiCode,
+  hasApiKey,
+}: {
+  apiCode: string | null;
+  hasApiKey: boolean;
+}) {
   const t = useT();
   const example = `{\n  "request_id": 12345,\n  "corrections": [\n    {\n      "entity_index": 0,\n      "field_path": "total",\n      "correct_value": "1234"\n    }\n  ],\n  "issue_type": "wrong_value"\n}`;
   return (
-    <section className="space-y-2 rounded-md border border-border-default bg-bg-elevated p-4">
+    <section className="space-y-3 rounded-md border border-border-default bg-bg-elevated p-4">
       <details>
         <summary className="cursor-pointer text-sm font-semibold text-fg-primary">
           {t("api_console.feedback_example_title")}
@@ -513,6 +523,18 @@ function FeedbackExamplePanel() {
           <code>{example}</code>
         </pre>
       </details>
+
+      <div className="space-y-2 border-t border-border-default pt-3">
+        <h3 className="text-sm font-semibold text-fg-primary">
+          {t("feedback.section_title")}
+        </h3>
+        <p className="text-xs text-fg-muted">{t("feedback.section_hint")}</p>
+        {hasApiKey && apiCode ? (
+          <FeedbackTestForm apiCode={apiCode} />
+        ) : (
+          <p className="text-xs text-fg-muted">{t("feedback.key_required")}</p>
+        )}
+      </div>
     </section>
   );
 }

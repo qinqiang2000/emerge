@@ -233,4 +233,45 @@ describe("ApiConsolePage", () => {
       expect(screen.queryByText("ek_abc")).not.toBeInTheDocument(),
     );
   });
+
+  it("renders the read-only feedback example block on every load", async () => {
+    renderConsole();
+    await settle();
+    // The summary text is always present, even if the form is gated.
+    expect(
+      await screen.findByText(/partial feedback example/i),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the interactive feedback form when no API keys exist", async () => {
+    mockGets({ keys: [] });
+    useProjects.setState({
+      rows: [PROJECT],
+      apiKeys: [],
+      contractDiff: null,
+      loading: false,
+      error: null,
+    });
+    renderConsole();
+    await settle();
+    expect(
+      await screen.findByText(/create an api key above before sending test feedback/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /send test feedback/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the interactive feedback form when at least one API key exists", async () => {
+    renderConsole();
+    await settle();
+    // KEYS array (default) has one entry, so the form must mount.
+    expect(
+      await screen.findByRole("button", { name: /send test feedback/i }),
+    ).toBeInTheDocument();
+    // The gating message must NOT appear at the same time.
+    expect(
+      screen.queryByText(/create an api key above before sending test feedback/i),
+    ).not.toBeInTheDocument();
+  });
 });

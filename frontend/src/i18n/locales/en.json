@@ -52,7 +52,42 @@
     "snippets_section": "Snippets",
     "snippets_hint": "Replace EMERGE_API_KEY with your secrets-manager value. The API key is shown once on creation.",
     "feedback_example_title": "Partial feedback example",
-    "feedback_example_hint": "Production callers POST corrections to /extract/{api_code}/feedback. Interactive form lands in R8.6."
+    "feedback_example_hint": "Production callers POST corrections to /extract/{api_code}/feedback. Use the form below to send a real test correction."
+  },
+  "feedback": {
+    "section_title": "Send test feedback",
+    "section_hint": "Paste an API key (revealed once on creation) and a recent prediction id from /extract. Lab corrections via Studio do not need this — they post as Annotations.",
+    "key_required": "Create an API key above before sending test feedback.",
+    "key_label": "API key",
+    "key_placeholder": "ek_…",
+    "key_helper": "Pasted key is not saved by the UI — it lives in component state only and is cleared on submit.",
+    "request_id_label": "Request id",
+    "request_id_helper": "The prediction_id returned by /extract.",
+    "entity_index_label": "Entity index",
+    "field_path_label": "Field path",
+    "field_path_placeholder": "total or line_items[2].price",
+    "correct_value_label": "Correct value",
+    "correct_value_helper": "Parsed as JSON when valid (numbers, true/false, null, arrays, objects); otherwise treated as a plain string.",
+    "comment_label": "Comment (optional)",
+    "issue_type_label": "Issue type",
+    "issue_type_placeholder": "Choose one",
+    "notes_label": "Notes (optional)",
+    "submit_button": "Send test feedback",
+    "submitting": "Sending…",
+    "success": "Counterexample saved (id {{id}}).",
+    "errors": {
+      "request_id_must_be_positive": "Request id must be a positive integer.",
+      "field_path_required": "Field path is required.",
+      "key_required": "API key is required.",
+      "submit_failed": "Could not send feedback."
+    },
+    "issue_type": {
+      "wrong_value": "Wrong value",
+      "missing_field": "Missing field",
+      "extra_field": "Extra field",
+      "wrong_entity_count": "Wrong entity count",
+      "other": "Other"
+    }
   },
   "auth": {
     "login_title": "Sign in to emerge",
