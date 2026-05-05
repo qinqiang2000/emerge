@@ -1,6 +1,7 @@
-# R8 continuation handoff — Prompt 2 onward
+# R8 continuation handoff — R8.3 onward
 
 Generated: 2026-05-04 20:43 CST
+Last refreshed: 2026-05-05 (post R8.2 manual smoke + backend tz/rename fixes)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -26,77 +27,118 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state
-
-Latest confirmed state:
+## 1. Current live state (2026-05-05 refresh)
 
 ```text
-branch: r8-productization-mvp
-HEAD:   0552f74 test(frontend): stabilize theme localStorage tests
-status: clean
+branch:  r8-productization-mvp
+HEAD:    d0d53ca fix(api): apply UTC datetime serializer to remaining Out schemas
+status:  clean
 ```
 
-R8 commits are intentionally **not** in local `main` as of the last merge check. Continue on `r8-productization-mvp` unless the user explicitly asks to merge. Do not push remote or create a remote branch unless the user explicitly asks.
+R8 commits remain on `r8-productization-mvp`, not in local or remote `main`. Continue here unless the user explicitly asks to merge / push.
 
-Important reachability facts:
+### Phases done end-to-end on this branch
 
-```text
-b813e6f overlay plan                    in r8-productization-mvp, not in main
-141adea R8.0 frontend bootstrap          in r8-productization-mvp, not in main
-dbbdcdc R8.0 i18n                        in r8-productization-mvp, not in main
-794e318 R8.0 theme                       in r8-productization-mvp, not in main
-78b2de3 R8.0 base UI                     in r8-productization-mvp, not in main
-4538284 R8.0 axios client                in r8-productization-mvp, not in main
-4a269bd R8.0 auth gate                   in r8-productization-mvp, not in main
-331a821 R8.0.1 lint/i18n hygiene         in r8-productization-mvp, not in main
-0552f74 pre-Prompt2 theme test stabilization in r8-productization-mvp, not in main
-```
+**R8.0 — Foundation** (Tasks 1–6 from historical plan, R8.0.1 hygiene): bootstrap, i18n, theme, base UI, axios client + EmergeError, auth gate.
 
-Completed baseline:
+**R8.1 — Product shell**: project list with published badge, project create with builtin templates + empty path, document list with upload + extract, minimal Studio with correction save, schema editor form-mode with lock/unlock. Plus: project sub-nav (Documents / Schema / API), auth boot-prime fix, Pages column drop, plan §314/323 doc fix.
+
+**R8.2 — API Console**: publish/keys store actions, one-time API key reveal modal, API Console page (dual version pointers / contract diff / activate / rename / rollback / unpublish / keys / snippets / feedback example), Activate/Rename input split.
+
+**Plus two backend fixes from R8.2 manual smoke** (`e7edcdf` + `d0d53ca`): UTC offset on serialized datetimes (7 Out schemas) + `publish()` no longer bumps `api_published_at` on pure rename.
+
+### Reverse-chronological commit list (this branch)
 
 ```text
-7aa4e0b feat(api): R7.5 publish hardening — global api_code, evidence allow-list, length, empty-schema gate
-b813e6f docs: add R8 productization MVP overlay plan
-141adea chore(frontend): bootstrap Vite + React 19 + TS + Vitest skeleton
-dbbdcdc feat(frontend): i18n setup with English catalog and useT hook
-794e318 feat(frontend): light/dark/system theme with CSS-var token system
-78b2de3 feat(frontend): base Radix-wrapped components with token-only styling
-4538284 feat(frontend): axios client + EmergeError envelope decoder
-4a269bd feat(frontend): auth store + login/register pages + auth gate
-331a821 chore(frontend): fix R8.0 lint and i18n hygiene
+d0d53ca fix(api): apply UTC datetime serializer to remaining Out schemas
+e7edcdf fix(api): UTC offset on serialized datetimes + don't bump api_published_at on pure rename
+035031c fix(frontend): split Activate and Rename inputs in API Console
+e282200 feat(frontend): API Console with publish, contract diff, keys, rollback
+82e5e56 feat(frontend): one-time API key reveal modal with copy + ack
+67eb160 feat(frontend): publish/keys store actions for API Console
+2432ae9 docs(plan): R8.1.e plan reflects read-only field name/type in v1
+82be98d fix(frontend): drop "0 pages" from Studio header to match dropped column
+80458c8 fix(frontend): boot-prime axios auth + drop misleading Pages column
+dda952d feat(frontend): project sub-nav so the R8.1 walking path is reachable
+9a1e20b feat(frontend): schema editor form mode with lock/unlock
+c276e47 feat(frontend): minimal Studio with correction save
+8a85022 feat(frontend): document list with upload + extract trigger
+c84184e feat(frontend): project creation dialog with builtin templates + empty path
+14edb0d feat(frontend): project list shows published/draft status from R7.5 pointer
 0552f74 test(frontend): stabilize theme localStorage tests
+331a821 chore(frontend): fix R8.0 lint and i18n hygiene
+4a269bd feat(frontend): auth store + login/register pages + auth gate
+4538284 feat(frontend): axios client + EmergeError envelope decoder
+78b2de3 feat(frontend): base Radix-wrapped components with token-only styling
+794e318 feat(frontend): light/dark/system theme with CSS-var token system
+dbbdcdc feat(frontend): i18n setup with English catalog and useT hook
+141adea chore(frontend): bootstrap Vite + React 19 + TS + Vitest skeleton
+b813e6f docs: add R8 productization MVP overlay plan
 ```
 
-Known R7.5 backend baseline remains accepted:
+### Health snapshot at HEAD
 
 ```text
-backend uv run pytest -v: 234 passed, 2 skipped, 4 warnings
-Alembic empty DB upgrade to head: passed
+cd frontend && npm run lint                : clean
+cd frontend && npm test                    : 13 files / 56 tests passed
+cd frontend && npm run build               : 423 KB / 134 KB gzipped
+cd backend  && uv run pytest -q            : 237 passed, 2 skipped, 4 warnings
 ```
+
+### Manual smoke completed (R8.1 + R8.2)
+
+A real walking-path smoke ran against `dogfood@example.com` on project test1 (built from `japan_receipt` builtin, 2 Japanese parking-receipt PDFs uploaded + extracted with Gemini):
+
+- R8.1: register → create → upload → extract → Studio edit + save → reload (override visible) → Schema lock + unlock. Found auth race + Pages-column-always-0 bug; both fixed in `80458c8`/`82be98d`.
+- R8.2: lock → API tab → Activate → Create key (modal plaintext + Esc-blocked + ack-gated dismiss) → reload (prefix-only) → Rename → Unpublish → curl `/extract/japan-receipts-v2` → 403 → Re-publish → Revoke. Found timezone drift + `api_published_at` re-stamp on rename; both fixed in `e7edcdf`/`d0d53ca`.
+
+Open UX findings from those smokes are tracked in TaskList #8 and were not stop-the-line. See §13 below for the full hygiene tail.
 
 ---
 
-## 2. R8.0.1 verification note before Prompt 2
+## 2. R8.3 entry point — read this then dive in
 
-`331a821` fixed the original lint issue and `0552f74` stabilized the Vitest/happy-dom `localStorage` setup that had caused `theme.test.tsx` to fail under this Node runtime.
+Authoritative R8.3 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.3 — API Readiness Panel** (around lines 468–537).
 
-Verified after `0552f74`:
+R8.3 in one paragraph: render `GET /api/v1/projects/{pid}/readiness` as a product-facing trust surface with quality + CI band, evidence counts, schema maturity, regression health (with explicit "No production feedback yet" when `counterexamples_total === 0` — never `100%`), risky fields top-5, and translated publish_blockers / warnings. Mount above Document table on `/projects/:id` AND inside `/projects/:id/api-console`. Single store + single component reused in both places.
+
+Suggested Claude Code prompt for the next session:
 
 ```text
-cd frontend && npm run lint: passed
-cd frontend && npm test: 4 files / 9 tests passed
-cd frontend && npm run build: passed
-```
+Continue R8 Productization MVP on branch r8-productization-mvp.
 
-Root cause of the test issue: Node's experimental global `localStorage` was present but not a full DOM `Storage` implementation (`clear` was missing and i18next-browser-languagedetector emitted a `--localstorage-file` warning). `frontend/src/test-setup.ts` now installs a deterministic in-memory `Storage` mock on both `window.localStorage` and `globalThis.localStorage` before dynamically importing `@/i18n`.
+Pre-read in order:
+- CLAUDE.md
+- docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md (this file)
+- docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay)
+- docs/superpowers/specs/2026-05-02-overall-design.md §4.5 for readiness semantics
 
-Still run the normal health checks before starting Prompt 2:
+Verify health at HEAD before starting:
+- cd frontend && npm run lint && npm test && npm run build
+- cd backend && uv run pytest -q
 
-```bash
-cd /Users/qinqiang02/colab/codespace/ai/emerge/frontend
-npm run lint
-npm test
-npm run build
+Then implement only Phase R8.3 from the overlay plan (API Readiness Panel,
+~one commit). Convention from R8.1 and R8.2:
+- TDD: write the spec test first, watch it RED, implement, watch GREEN
+- Use existing patterns: useT() for every visible string, semantic Tailwind
+  tokens only, EmergeError → errors.<code> i18n, Zustand store with rows /
+  loading / error fields
+- After each commit, dispatch a superpowers:code-reviewer subagent for gate
+  review (this is a standing user instruction; see memory file
+  feedback_gate_review_subagent.md)
+- On readiness blockers / warnings: mirror every slug from
+  backend/app/services/readiness.py into en.json under errors.readiness.*;
+  raw slugs must NEVER reach the user
+
+R8.3 hard rules (from CLAUDE.md + spec §4.5):
+- When regression_health.counterexamples_total === 0, render "No production
+  feedback yet". NEVER render 100%.
+- Quality always shows CI band: point% ± half-CI% (N obs · vibe-check K).
+- Risky fields: top 5 sorted by count desc, "+N more" affordance.
+
+Do not implement Review Inbox, Field Evidence, Partial Feedback, AutoResearch
+viewer, MatchingProject, VerificationProject, bbox/coordinate UI, real PDF
+preview. Do not read or print secrets.
 ```
 
 ---
@@ -119,23 +161,21 @@ Carry these through every prompt and code review:
 
 ---
 
-## 4. Prompt mapping from here
-
-The earlier Prompt 1 completed R8.0 frontend foundation. From here, use this numbering:
+## 4. Prompt mapping — where we are
 
 ```text
-Prompt 2 => R8.1 Product shell: project list, document list, minimal Studio, form schema editor
-Prompt 3 => R8.2 API Console + publish flow + one-time API key reveal
-Prompt 4 => R8.3 API Readiness Panel
-Prompt 5 => R8.4 Review Inbox
-Prompt 6 => R8.5 Field Evidence display in Studio, including the small backend payload gap
-Prompt 7 => R8.6 Partial Feedback UI, public shape + in-Lab reuse
-Prompt 8 => R8.7 Walking Skeleton E2E
+Prompt 1 (DONE)  => R8.0 frontend foundation
+Prompt 2 (DONE)  => R8.1 Product shell + sub-nav + auth boot-prime + Pages drop
+Prompt 3 (DONE)  => R8.2 API Console + publish flow + one-time API key reveal
+                    + backend tz / api_published_at fixes
+Prompt 4 (NEXT)  => R8.3 API Readiness Panel
+Prompt 5         => R8.4 Review Inbox
+Prompt 6         => R8.5 Field Evidence display in Studio (incl small backend payload gap)
+Prompt 7         => R8.6 Partial Feedback UI, public shape + in-Lab reuse
+Prompt 8         => R8.7 Walking Skeleton E2E
 ```
 
-Recommended series: **R8.1 → R8.2 → R8.3 → R8.4 → R8.5 → R8.6 → R8.7**.
-
-R8.2 / R8.3 / R8.4 are technically parallel after R8.1, but keep them serial unless there is a strong reason to parallelize.
+§5 below ("Prompt 2 — R8.1 Product shell") is preserved as historical reference for the patterns established in R8.1; new sessions don't need to re-implement it. Skip directly to §7 (R8.3) when starting fresh.
 
 ---
 
