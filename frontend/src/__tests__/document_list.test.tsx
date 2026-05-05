@@ -48,6 +48,7 @@ const REVIEW_STUB: ReviewQueueOut = {
   required_review: [],
   spot_check: [],
   all: [],
+  schema_locked: true,
 };
 
 function mockGet(handler?: (url: string) => unknown) {

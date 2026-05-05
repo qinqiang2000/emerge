@@ -44,6 +44,15 @@ export function ReviewInboxPage() {
           <p className="text-fg-muted">{t("review.loading")}</p>
         ) : null}
 
+        {data && !data.schema_locked ? (
+          <p
+            data-testid="review-draft-mode-callout"
+            className="rounded-md border border-border-default bg-bg-muted p-3 text-xs text-fg-muted"
+          >
+            {t("review.draft_mode_callout")}
+          </p>
+        ) : null}
+
         {data ? (
           <div className="space-y-6">
             <ReviewSection

@@ -12,6 +12,7 @@ const EMPTY_QUEUE: ReviewQueueOut = {
   required_review: [],
   spot_check: [],
   all: [],
+  schema_locked: true,
 };
 
 const SAMPLE_QUEUE: ReviewQueueOut = {
@@ -28,6 +29,7 @@ const SAMPLE_QUEUE: ReviewQueueOut = {
     { id: 21, filename: "spot_a.pdf", flagged_fields: [] },
     { id: 22, filename: "all_only.pdf", flagged_fields: [] },
   ],
+  schema_locked: true,
 };
 
 function mockQueue(payload: ReviewQueueOut = SAMPLE_QUEUE) {
@@ -116,6 +118,7 @@ describe("ReviewInboxBanner", () => {
       required_review: [],
       spot_check: [{ id: 31, filename: "spot.pdf", flagged_fields: [] }],
       all: [{ id: 31, filename: "spot.pdf", flagged_fields: [] }],
+      schema_locked: true,
     });
     renderBannerAt("/projects/7");
     await settleReview();
@@ -132,6 +135,7 @@ describe("ReviewInboxBanner", () => {
       all: [
         { id: 41, filename: "ok.pdf", flagged_fields: [] },
       ],
+      schema_locked: true,
     });
     renderBannerAt("/projects/7");
     await settleReview();
@@ -158,6 +162,7 @@ describe("ReviewInboxBanner", () => {
         ],
         spot_check: [],
         all: [{ id: 99, filename: "stale.pdf", flagged_fields: ["stale_field"] }],
+        schema_locked: true,
       },
       loading: false,
       error: null,
@@ -236,6 +241,7 @@ describe("ReviewInboxPage", () => {
       all: [
         { id: 51, filename: "ok.pdf", flagged_fields: [] },
       ],
+      schema_locked: true,
     });
     renderPageAt("/projects/7/review");
     await settleReview();
@@ -247,6 +253,24 @@ describe("ReviewInboxPage", () => {
     expect(
       within(spot).getByText(/no spot-check|all caught up|nothing/i),
     ).toBeInTheDocument();
+  });
+
+  it("renders the Draft-mode callout when schema_locked is false", async () => {
+    mockQueue({ ...SAMPLE_QUEUE, schema_locked: false });
+    renderPageAt("/projects/7/review");
+    await settleReview();
+    const callout = await screen.findByTestId("review-draft-mode-callout");
+    expect(callout.textContent ?? "").toMatch(/Draft/i);
+    expect(callout.textContent ?? "").toMatch(/lock/i);
+  });
+
+  it("hides the Draft-mode callout when schema_locked is true", async () => {
+    mockQueue({ ...SAMPLE_QUEUE, schema_locked: true });
+    renderPageAt("/projects/7/review");
+    await settleReview();
+    expect(
+      screen.queryByTestId("review-draft-mode-callout"),
+    ).not.toBeInTheDocument();
   });
 
   it("surfaces translated error envelope when load fails", async () => {

@@ -30,6 +30,10 @@ class ReviewQueueOut(BaseModel):
     required_review: list[ReviewItemOut]
     spot_check: list[ReviewItemOut]
     all: list[ReviewItemOut]
+    schema_locked: bool  # True iff active version is locked (spec §4.1).
+    # Frontend renders a "Schema is in Draft — corrected docs stay here so
+    # you can revisit" callout when False, so the user understands why a
+    # doc they just corrected hasn't disappeared.
 
 
 class JudgeRunOut(BaseModel):

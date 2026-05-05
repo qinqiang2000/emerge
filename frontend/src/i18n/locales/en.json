@@ -277,7 +277,8 @@
     "section_all_hint": "Every document in the current vibe-check set.",
     "section_required_empty": "All caught up — no flagged documents.",
     "section_spot_check_empty": "No spot-check picks for this project yet.",
-    "section_all_empty": "No documents in the vibe-check set yet."
+    "section_all_empty": "No documents in the vibe-check set yet.",
+    "draft_mode_callout": "Schema is in Draft — corrected documents stay here so you can revisit them. Lock the schema when you're done iterating; corrected docs leave the queue at that point."
   },
   "common": {
     "cancel": "Cancel",

@@ -296,6 +296,9 @@ async def test_review_queue_and_judge_pool_flip_with_lock_state(
     assert all_ids == {did_a, did_b}, (
         "draft mode must keep the corrected doc in review-queue.all"
     )
+    assert body["schema_locked"] is False, (
+        "draft mode must surface schema_locked=False so frontend renders the lifecycle callout"
+    )
 
     fake = FakeJudgeProvider(canned=[{"0": {"a": "up"}}, {"0": {"a": "up"}}])
     app.dependency_overrides[get_judge_provider] = lambda: fake
@@ -316,6 +319,9 @@ async def test_review_queue_and_judge_pool_flip_with_lock_state(
     all_ids = {row["id"] for row in body["all"]}
     assert all_ids == {did_a}, (
         "locked mode must drop the corrected doc per spec §4.1"
+    )
+    assert body["schema_locked"] is True, (
+        "locked mode must surface schema_locked=True so frontend hides the lifecycle callout"
     )
 
     fake_locked = FakeJudgeProvider(canned=[{"0": {"a": "up"}}])

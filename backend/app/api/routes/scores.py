@@ -150,7 +150,16 @@ async def get_review_queue(
             up_only.append(item)
     rng = random.Random(project_id)  # deterministic per project
     spot_check = rng.sample(up_only, k=min(2, len(up_only)))
-    return ReviewQueueOut(required_review=required, spot_check=spot_check, all=all_items)
+    # `include_corrected=True` is exactly the "active version is draft or
+    # absent" condition (see vibe_check_includes_corrected). Mirror it on
+    # the wire so the frontend can render lifecycle-aware copy without a
+    # separate /lock-status round trip.
+    return ReviewQueueOut(
+        required_review=required,
+        spot_check=spot_check,
+        all=all_items,
+        schema_locked=not include_corrected,
+    )
 
 
 @router.post("/judge", response_model=JudgeRunOut)

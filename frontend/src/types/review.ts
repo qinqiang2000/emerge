@@ -11,4 +11,5 @@ export type ReviewQueueOut = {
   required_review: ReviewItemOut[];
   spot_check: ReviewItemOut[];
   all: ReviewItemOut[];
+  schema_locked: boolean;
 };
