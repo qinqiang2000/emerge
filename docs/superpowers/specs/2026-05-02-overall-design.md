@@ -387,7 +387,14 @@ Score is computed at two granularities:
 - **Per-Document score** — same formula restricted to the fields of one Document's latest Prediction. Used to rank / filter on the Document list page.
 - **Per-Project score** — average of per-Document scores across the Project's **vibe-check set**.
 
-**Vibe-check set 精确定义**：Project 内的 Document 中，最新一条 Prediction **未被随后的 saved Annotation (role=none) 覆盖**的那批。也就是"模型输出过、但用户还没确认或矫正"的 doc。`role=counterexample` 的 Annotation 不算"覆盖"——它是事后报错入池，不消耗 vibe-check 资格。
+**Vibe-check set 精确定义**随 active ProjectVersion 的生命周期切换：
+
+- **Active version 是 Draft（或尚未存在）** —— 池子放开：所有最新 Prediction 不为空的 Document 都在内，**不论是否被 saved Annotation 覆盖**。意图是 schema 迭代阶段用户能反复回看自己刚改过的 doc，不会因为"按一下 Save"就把 doc 从 review 队列里抹掉。
+- **Active version 已 Locked** —— 池子收紧：Project 内的 Document 中，最新一条 Prediction **未被随后的 saved Annotation (role=none) 覆盖**的那批才算在内。也就是"模型输出过、但用户还没确认或矫正"的 doc。这是面向生产的持续监控姿态。
+
+两种模式下 `role=counterexample` 的 Annotation 都不算"覆盖"——它是事后报错入池，不消耗 vibe-check 资格。
+
+由此 **Lock schema 这个动作不只是 freeze field set**：它同时把 review-queue 从"迭代脚手架"切换到"生产监控面板"，是 Lab → Production 心智的关键转折点。
 
 具体来源两块：
 1. 当前 batch 中尚未被人审的 Documents
