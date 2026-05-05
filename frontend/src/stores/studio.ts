@@ -48,6 +48,12 @@ type StudioState = {
   load: (projectId: number, documentId: number) => Promise<void>;
   setDraft: (next: EntityOutput[]) => void;
   save: (projectId: number) => Promise<void>;
+  reportWrong: (args: {
+    projectId: number;
+    entityIndex: number;
+    fieldName: string;
+    correctValue: unknown;
+  }) => Promise<void>;
 };
 
 function seedDraft(doc: DocumentDetail): EntityOutput[] {
@@ -88,6 +94,40 @@ export const useStudio = create<StudioState>((set, get) => ({
         `/api/v1/projects/${projectId}/documents/${doc.id}/annotations`,
         {
           output: draft,
+          parent_prediction_id: doc.latest_prediction?.id ?? null,
+        },
+      );
+      await get().load(projectId, doc.id);
+    } catch (e) {
+      set({ error: emergeErrorKey(e) });
+    } finally {
+      set({ saving: false });
+    }
+  },
+
+  // Lab-side counterpart to the public partial-feedback contract: applies
+  // a single field correction client-side and POSTs as a regular
+  // Annotation. Lab MUST NOT call /extract/{api_code}/feedback — Lab uses
+  // session JWT, not X-Api-Key, and the auth model is different (spec §1
+  // and the R8.6 hard rules).
+  async reportWrong({ projectId, entityIndex, fieldName, correctValue }) {
+    const { doc } = get();
+    if (doc === null) return;
+    const baseline =
+      doc.latest_annotation?.output ?? doc.latest_prediction?.output ?? [];
+    if (entityIndex < 0 || entityIndex >= baseline.length) {
+      set({ error: "errors.VALIDATION_FAILED" });
+      return;
+    }
+    const merged = baseline.map((entity, i) =>
+      i === entityIndex ? { ...entity, [fieldName]: correctValue } : entity,
+    );
+    set({ saving: true, error: null });
+    try {
+      await api.post(
+        `/api/v1/projects/${projectId}/documents/${doc.id}/annotations`,
+        {
+          output: merged,
           parent_prediction_id: doc.latest_prediction?.id ?? null,
         },
       );

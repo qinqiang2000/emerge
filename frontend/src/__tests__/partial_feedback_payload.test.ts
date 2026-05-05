@@ -30,6 +30,24 @@ describe("fieldPathFor — dotted/array path composition", () => {
     expect(fieldPathFor(7, "total")).toBe("total");
     expect(fieldPathFor(7, "line_items", 1)).toBe("line_items[1]");
   });
+
+  it("rejects a key with characters outside the backend identifier regex", () => {
+    expect(() => fieldPathFor(0, "a.b")).toThrow(/identifier regex/i);
+    expect(() => fieldPathFor(0, "0_starts_with_digit")).toThrow(
+      /identifier regex/i,
+    );
+    expect(() => fieldPathFor(0, "")).toThrow(/identifier regex/i);
+    expect(() => fieldPathFor(0, "has space")).toThrow(/identifier regex/i);
+  });
+
+  it("rejects a negative or non-integer arrayIndex", () => {
+    expect(() => fieldPathFor(0, "line_items", -1)).toThrow(
+      /non-negative integer/i,
+    );
+    expect(() => fieldPathFor(0, "line_items", 1.5)).toThrow(
+      /non-negative integer/i,
+    );
+  });
 });
 
 describe("buildPartialFeedback — payload shape", () => {

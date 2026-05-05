@@ -1,4 +1,5 @@
-import { useEffect, useId } from "react";
+import { Flag } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -6,6 +7,7 @@ import {
   FieldEvidencePopover,
 } from "@/components/FieldEvidencePopover";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
+import { ReportWrongFieldDialog } from "@/components/ReportWrongFieldDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/i18n/useT";
@@ -141,6 +143,7 @@ export function StudioPage() {
                       entityIndex={entityIdx}
                       fieldName={key}
                       value={value}
+                      projectId={projectId}
                       verdict={
                         doc.latest_prediction?.per_field_confidence?.[
                           String(entityIdx)
@@ -165,6 +168,7 @@ function FieldRow({
   entityIndex,
   fieldName,
   value,
+  projectId,
   verdict,
   evidenceMap,
   onChange,
@@ -172,11 +176,14 @@ function FieldRow({
   entityIndex: number;
   fieldName: string;
   value: unknown;
+  projectId: number;
   verdict: ConfidenceVerdict | null | undefined;
   evidenceMap: PerFieldEvidence | null | undefined;
   onChange: (next: string) => void;
 }) {
+  const t = useT();
   const labelId = useId();
+  const [reportOpen, setReportOpen] = useState(false);
   const display =
     value === null || value === undefined
       ? ""
@@ -196,12 +203,30 @@ function FieldRow({
           fieldName={fieldName}
           evidenceMap={evidenceMap}
         />
+        <button
+          type="button"
+          aria-label={t("studio.report_wrong.trigger_aria")}
+          onClick={() => setReportOpen(true)}
+          className="text-fg-muted hover:text-fg-primary"
+        >
+          <Flag size={14} />
+        </button>
       </div>
       <Input
         aria-labelledby={labelId}
         value={display}
         onChange={(e) => onChange(e.target.value)}
       />
+      {reportOpen ? (
+        <ReportWrongFieldDialog
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          entityIndex={entityIndex}
+          fieldName={fieldName}
+          currentValue={value}
+          projectId={projectId}
+        />
+      ) : null}
     </div>
   );
 }

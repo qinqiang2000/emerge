@@ -155,6 +155,21 @@
     "confidence": {
       "uncertain": "Uncertain",
       "needs_review": "Needs review"
+    },
+    "report_wrong": {
+      "trigger_aria": "Report this field as wrong",
+      "dialog_title": "Report wrong field",
+      "dialog_hint": "This saves a Lab correction (Annotation). Production integrators send the same JSON shape via /extract/{api_code}/feedback.",
+      "entity_index_label": "Entity index",
+      "field_path_label": "Field path",
+      "current_value_label": "Current value",
+      "corrected_value_label": "Corrected value",
+      "show_equivalent": "What integrators would send",
+      "save_button": "Save",
+      "cancel_button": "Cancel",
+      "errors": {
+        "no_prediction": "Cannot report — this document has no prediction yet."
+      }
     }
   },
   "schema": {

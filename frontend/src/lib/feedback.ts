@@ -39,12 +39,29 @@ export interface PartialFeedbackPayload {
   notes?: string;
 }
 
+// Identifier guard mirrors backend `_SEG` regex
+// (backend/app/services/corrections.py): a path segment is an identifier
+// followed by zero-or-more `[n]` indices. We validate the *key* portion
+// here and let the caller compose dotted forms.
+const IDENT_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 export function fieldPathFor(
   _entityIndex: number,
   key: string,
   arrayIndex?: number,
 ): string {
-  return arrayIndex === undefined ? key : `${key}[${arrayIndex}]`;
+  if (!IDENT_REGEX.test(key)) {
+    throw new Error(
+      `field key '${key}' must match identifier regex /^[a-zA-Z_][a-zA-Z0-9_]*$/`,
+    );
+  }
+  if (arrayIndex !== undefined) {
+    if (!Number.isInteger(arrayIndex) || arrayIndex < 0) {
+      throw new Error("arrayIndex must be a non-negative integer");
+    }
+    return `${key}[${arrayIndex}]`;
+  }
+  return key;
 }
 
 export function buildPartialFeedback(args: {
