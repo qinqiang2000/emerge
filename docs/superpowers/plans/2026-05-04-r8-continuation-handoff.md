@@ -189,13 +189,34 @@ Open UX findings from those smokes are tracked in the hygiene tail. See §13 bel
 
 R8.7 + both hygiene-tail backend gaps now landed. The R8 Productization MVP is **functionally complete and end-to-end validated on this branch**. The §12 exit gate is satisfied: every item is covered by either automated CI (`npm run lint && npm test && npm run build && uv run pytest`) or the walking-skeleton E2E.
 
-Recommended next-session path: **§13 P0 — Release hardening / dogfood**:
-1. Small release-checklist script that runs lint/test/build + backend pytest + (optionally) `EMERGE_E2E=1 npx playwright test walking_skeleton`. Output one-line PASS/FAIL summary.
-2. Demo doc for local walkthrough — placeholder `EMERGE_API_KEY` only, no real keys.
-3. Pin the API-key one-time-reveal contract with a regression test (already covered in `api_key_reveal_modal.test.tsx`; verify it asserts no localStorage write).
-4. Verify `published_version_id` semantics survive Lab activation cycles — already tested in `test_publish.py`; do a final dogfood walk.
-5. Migration risk for global `api_code` uniqueness: production/staging DB must have no duplicate non-null `api_code` before Alembic 0015. Surface a one-line `select count(*) from projects group by api_code having count(*) > 1` script.
-6. Decide merge strategy into `main`. `origin/main` and local `main` may have diverged — inspect branch graph first; do not push without user approval.
+§13 P0 status (2026-05-05 sweep):
+1. ~~Release-checklist script~~ — `scripts/release-checklist.sh` runs lint/test/build/pytest in series with PASS/FAIL summary; `EMERGE_E2E=1` adds the Playwright walking-skeleton step. Per-step logs land in gitignored `.release-checklist-logs/`. Smoke verified: 4 pass, 1 skip on this HEAD.
+2. ~~Local demo doc~~ — `docs/local-demo.md` mirrors the Playwright spec; all snippets use the `EMERGE_API_KEY` placeholder. Includes the proxy / extract-error / lock-status / api_code-duplicate troubleshooting paragraphs the smokes surfaced.
+3. **API-key one-time-reveal contract test** — `frontend/src/__tests__/api_key_reveal_modal.test.tsx` covers Copy / dismiss-ack / one-shot render but does **not** assert "plaintext never written to localStorage". The `Storage.prototype.setItem` spy assertion the handoff line referenced lives in the **FeedbackTestForm** test, which is a different surface (transient-paste rather than reveal). Recommend a tiny follow-up to add the `setItem` spy to `api_key_reveal_modal.test.tsx` so both plaintext surfaces are pinned with the same shape. Non-blocking — modal source already has no localStorage write path.
+4. ~~`published_version_id` semantics~~ — already covered: `backend/tests/test_publish_routes.py` has 9 explicit `published_version_id` assertions (rollback, rename-doesn't-republish, lab-activate-doesn't-bump). Walking-skeleton E2E re-exercises the publish path live.
+5. ~~`api_code` uniqueness pre-migration check~~ — `scripts/check_api_code_uniqueness.py` chdirs to `backend/` then runs the `GROUP BY api_code HAVING COUNT(*) > 1` SELECT against `settings.database_url`. Exit 0 = clean, 2 = duplicates printed. Smoke-verified (clean) on the current dev DB.
+6. ~~Merge strategy review~~ — branch graph is **linear**, no divergence. Details below.
+
+### Branch graph audit (2026-05-05)
+
+```text
+origin/main          25b830b  test(engine): add Gemini live smoke + SOCKS proxy support  (R6 era)
+                       │  +67 commits  (all R7 / R7.5 — incl. alembic 0015 global api_code)
+local main           7aa4e0b  feat(api): R7.5 publish hardening
+                       │  +61 commits  (all R8 productization MVP — no further alembic)
+r8-productization-mvp 45f82b8  docs(handoff): refresh after smoke-finding sweep
+```
+
+`git merge-base origin/main r8 == 25b830b`; `git merge-base main r8 == 7aa4e0b`. r8 is a strict descendant of local main, which is a strict descendant of origin/main. Every prospective merge is a fast-forward.
+
+Recommended path (Option B, two reviewable checkpoints):
+
+1. **Push local main to origin/main first.** This is just R7.5; it's the publishing/readiness backend the R8 UI builds on. Lands alembic 0015 on origin so the next ff-push doesn't carry a schema change. Discipline before the push: `cd backend && uv run python ../scripts/check_api_code_uniqueness.py` against any DB the migration will eventually run on.
+2. **Then ff-merge `r8-productization-mvp` → main and push.** All 61 commits are R8 frontend + a few engine/judge gaps; no migration. This is where the dogfood walk in `docs/local-demo.md` lives, so the post-push verification is "open <http://localhost:5173> on a fresh clone, walk the demo doc end-to-end".
+
+Option A (single ff push) is functionally identical end-state but combines 128 commits into one origin update — tolerable for one-developer dogfood, but Option B gives you a clean R7.5 / R8 split for later bisects.
+
+Either way: do not push without user approval, and do not force-push to main under any circumstances.
 
 Two minor gate-review items remain open from this session (both deferrable):
 
