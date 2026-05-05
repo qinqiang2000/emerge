@@ -16,7 +16,9 @@ export const useReadiness = create<ReadinessState>((set) => ({
   error: null,
 
   async load(projectId) {
-    set({ loading: true, error: null });
+    // Clear stale data so a project switch never flashes the previous
+    // project's numbers while the new request is in flight.
+    set({ data: null, loading: true, error: null });
     try {
       const data = (
         await api.get(`/api/v1/projects/${projectId}/readiness`)

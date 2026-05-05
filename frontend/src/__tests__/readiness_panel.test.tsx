@@ -199,6 +199,108 @@ describe("ReadinessPanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders distinct copy for each regression_health.status value", async () => {
+    // passing
+    mockReadiness({
+      regression_health: {
+        counterexamples_total: 8,
+        counterexample_component: 1.0,
+        status: "passing",
+      },
+    });
+    const r1 = await renderPanel();
+    const passingText =
+      within(r1.getByTestId("readiness-regression")).getByTestId(
+        "readiness-regression-status",
+      ).textContent ?? "";
+    r1.unmount();
+    useReadiness.setState({ data: null, loading: false, error: null });
+
+    // failing
+    mockReadiness({
+      regression_health: {
+        counterexamples_total: 8,
+        counterexample_component: 0.5,
+        status: "failing",
+      },
+    });
+    const r2 = await renderPanel();
+    const failingText =
+      within(r2.getByTestId("readiness-regression")).getByTestId(
+        "readiness-regression-status",
+      ).textContent ?? "";
+    r2.unmount();
+    useReadiness.setState({ data: null, loading: false, error: null });
+
+    // unknown
+    mockReadiness({
+      regression_health: {
+        counterexamples_total: 8,
+        counterexample_component: 0.5,
+        status: "unknown",
+      },
+    });
+    const r3 = await renderPanel();
+    const unknownText =
+      within(r3.getByTestId("readiness-regression")).getByTestId(
+        "readiness-regression-status",
+      ).textContent ?? "";
+    r3.unmount();
+    useReadiness.setState({ data: null, loading: false, error: null });
+
+    expect(passingText).not.toEqual(failingText);
+    expect(passingText).not.toEqual(unknownText);
+    expect(failingText).not.toEqual(unknownText);
+  });
+
+  it("falls back to 'status not yet computed' when total > 0 but component is null", async () => {
+    mockReadiness({
+      regression_health: {
+        counterexamples_total: 8,
+        counterexample_component: null,
+        status: "unknown",
+      },
+    });
+    await renderPanel();
+    const reg = await screen.findByTestId("readiness-regression");
+    // must NOT pretend 0/8 passing when we don't actually know
+    expect(within(reg).queryByText(/0\s*\/\s*8/)).not.toBeInTheDocument();
+    expect(
+      within(reg).getByText(/not yet computed|status unknown/i),
+    ).toBeInTheDocument();
+  });
+
+  it("clears stale data when load() is called for a new project", async () => {
+    // seed a populated state simulating /projects/1
+    useReadiness.setState({
+      data: {
+        ...BASE_READINESS,
+        risky_fields: [{ field_name: "stale_field_from_proj_1", count: 9 }],
+      },
+      loading: false,
+      error: null,
+    });
+    let resolveLoad: (v: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      resolveLoad = resolve;
+    });
+    vi.spyOn(api, "get").mockReturnValue(
+      pending as unknown as ReturnType<typeof api.get>,
+    );
+    // render the panel for projectId=2 — load(2) should clear stale data first
+    render(<ReadinessPanel projectId={2} />);
+    await waitFor(() =>
+      expect(useReadiness.getState().loading).toBe(true),
+    );
+    // While load(2) is in flight, stale project-1 risky field must NOT be shown
+    expect(screen.queryByText("stale_field_from_proj_1")).not.toBeInTheDocument();
+    // Resolve the in-flight request to drain the act() warning
+    resolveLoad({ data: BASE_READINESS });
+    await waitFor(() =>
+      expect(useReadiness.getState().loading).toBe(false),
+    );
+  });
+
   it("uses only semantic Tailwind tokens (no raw color classes)", async () => {
     mockReadiness({
       publish_blockers: ["empty_schema"],

@@ -15,23 +15,6 @@ import type {
 
 const RISKY_TOP_N = 5;
 
-const KNOWN_BLOCKERS = new Set([
-  "no_active_version",
-  "active_version_unlocked",
-  "empty_schema",
-  "schema_not_lock_candidate",
-]);
-
-const KNOWN_WARNINGS = new Set([
-  "schema_still_stabilizing",
-  "risky_fields_present",
-  "no_production_feedback",
-  "low_evidence",
-  "low_field_evidence",
-]);
-
-const KNOWN_MATURITY = new Set(["draft", "stabilizing", "lock_candidate", "locked"]);
-
 function pct(x: number): number {
   return Math.round(x * 100);
 }
@@ -175,11 +158,11 @@ function EvidenceRow({ e }: { e: EvidenceCoverage }) {
 
 function MaturityRow({ m }: { m: SchemaMaturity }) {
   const t = useT();
-  const i18n = useTranslation().i18n;
+  const { i18n } = useTranslation();
   const key = `readiness.maturity.${m.status}`;
   // unknown statuses must not leak the raw slug — fall back to humanised form.
   let label: string;
-  if (KNOWN_MATURITY.has(m.status) && i18n.exists(key)) {
+  if (i18n.exists(key)) {
     label = t(key);
   } else {
     if (typeof console !== "undefined") {
@@ -218,17 +201,37 @@ function RegressionRow({ r }: { r: RegressionHealth }) {
     );
   }
   // Backend exposes counterexample_component as a 0..1 ratio rather than a
-  // raw passing count. Approximate `passing` from the component until the
-  // backend surfaces it directly.
-  const component = r.counterexample_component ?? 0;
-  const passing = Math.round(component * total);
+  // raw passing count. Approximate `passing` from the component when it is
+  // present; when the backend reports total > 0 with no component, treat the
+  // pass count as not yet computed instead of pretending 0/total.
+  const component = r.counterexample_component;
+  const hasComponent = component !== null && component !== undefined;
+  const passing = hasComponent ? Math.round(component * total) : null;
+  const statusToneClass =
+    r.status === "failing"
+      ? "text-status-error"
+      : r.status === "passing"
+      ? "text-status-success"
+      : "text-fg-muted";
   return (
     <div data-testid="readiness-regression" className="flex flex-col gap-0.5">
       <dt className="text-xs uppercase tracking-wide text-fg-muted">
         {t("readiness.regression_label")}
       </dt>
       <dd className="text-fg-primary">
-        <span>{t("readiness.regression_passing", { passing, total })}</span>
+        {passing === null ? null : (
+          <>
+            <span>
+              {t("readiness.regression_passing", { passing, total })}
+            </span>{" "}
+          </>
+        )}
+        <span
+          data-testid="readiness-regression-status"
+          className={`text-xs ${statusToneClass}`}
+        >
+          {t(`readiness.regression_status_${r.status}`)}
+        </span>
       </dd>
     </div>
   );
@@ -319,10 +322,11 @@ function resolveSlug(
   t: (k: string) => string,
   i18n: { exists: (k: string) => boolean },
 ): string {
-  const known =
-    kind === "blocker" ? KNOWN_BLOCKERS.has(slug) : KNOWN_WARNINGS.has(slug);
+  // Single source of truth: if en.json has the key, use it; otherwise
+  // humanise + warn. Keeping a hand-maintained slug whitelist on top of
+  // i18n.exists adds drift risk without real safety.
   const key = `errors.readiness.${slug}`;
-  if (known && i18n.exists(key)) return t(key);
+  if (i18n.exists(key)) return t(key);
   if (typeof console !== "undefined") {
     console.warn(`[ReadinessPanel] missing i18n key for ${kind}: ${slug}`);
   }
