@@ -1,7 +1,7 @@
 # R8 continuation handoff — R8.4 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.7 walking-skeleton E2E + judge-provider gap flag)
+Last refreshed: 2026-05-05 (post R8.7 hygiene-tail closure: judge-provider wiring + vibe-check lifecycle fix)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -28,11 +28,11 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state (2026-05-05 refresh, post R8.7)
+## 1. Current live state (2026-05-05 refresh, post R8.7 hygiene-tail closure)
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    151e2de test(frontend): walking-skeleton E2E covers publish + readiness + feedback
+HEAD:    8a317e4 test(frontend): re-enable /judge POST in walking-skeleton
 status:  clean
 ```
 
@@ -76,9 +76,23 @@ Plaintext key handling (the most security-sensitive piece): read once from the m
 
 Live run validated end-to-end against running `uv run uvicorn app.main:app --reload --port 8000` with `GOOGLE_API_KEY` set + proxy reachable (Gemini calls require `127.0.0.1:7890` on this machine — when the proxy is down, `extract_document` fails with `httpx.ConnectError`, error_message is empty in DB because `str(httpx.ConnectError())` returns `''`). Total runtime: 21 s with warm Gemini, expect ~60-120 s on cold start.
 
+**R8.7 hygiene-tail closure** — both backend gaps surfaced by the walking-skeleton ran to ground in this session:
+
+- **Gap #51 → `9659493` + `f0b51e4`**: vibe-check pool now relaxes during schema iteration. New helper `vibe_check_includes_corrected(session, project_id) -> bool` returns True iff active version is draft or absent; new `ignore_annotations` kwarg on `vibe_check_predictions_query`. Four call-sites updated (recompute, readiness, /review-queue, /judge). Default kwarg preserves spec §4.1 — direct callers and the original `test_vibe_check_excludes_documents_with_saved_annotation` are unchanged. After the gate review flagged a route-level test gap, `f0b51e4` adds an integration test that flips lock state and asserts the corrected doc disappears from both /review-queue.all and /judge.judged_predictions. UX shape: the **Lock schema** action now means more — "from now on /review-queue is the production-monitoring surface, not the iteration scratch pad". No new UI, no new mental model.
+- **Gap #50 → `fa72157` + `60f136d`**: `GeminiJudgeProvider` wires the production /judge path on `settings.default_model_pro` per CLAUDE.md model-tier-split memory. Mirrors `GeminiProvider`'s client-injection pattern so unit tests stay offline. `judge()` routes the protocol's full `system` prompt through Gemini's `system_instruction` slot (NOT a user-text Part — the system frame already carries schema + predicted_output, blurring would let the model treat them as conversation). Defensive shape-check drops malformed verdicts/literals/shapes per-entry to keep `JudgeCalibration` clean downstream. `get_judge_provider` raises a clearer `NotImplementedError` for `default_provider="openai"` with a pointer to `dependency_overrides`. 8 unit tests + the walking-skeleton E2E exercise the full path; reviewer's "_FakeSettings defined after callers" nit fixed in `60f136d`.
+- **Walking-skeleton update → `8a317e4`**: `/judge` POST is back in the spec, asserts `judged_predictions.length >= 1`. After lock the vibe-check pool only contains the uncorrected 3rd doc, so judge runs on exactly 1 prediction (or 0 on a Gemini Pro 503-transient). `>= 1` is the right loud-fail gate — 0 means the wiring rotted. Live re-run: 1.3 min wall-clock with warm Gemini.
+
+Real Gemini Pro behavior in the receipt smoke: judges parking-receipt `shop_name` as `down` consistently across 8 entities, `issue_date` and `total_amount` as `up`. The risky_fields and required_review surfaces are now genuinely populated end-to-end.
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+8a317e4 test(frontend): re-enable /judge POST in walking-skeleton
+60f136d refactor(test): hoist _FakeSettings above its callers
+fa72157 feat(api): wire production GeminiJudgeProvider for /judge
+f0b51e4 test(api): pin route-level lock-flip behavior for vibe-check pool
+9659493 feat(api): vibe-check pool relaxes during schema iteration
+97eadbd docs(handoff): refresh after R8.7 walking-skeleton + flag judge-provider gap
 151e2de test(frontend): walking-skeleton E2E covers publish + readiness + feedback
 1c51bad docs(handoff): refresh after R8.6 partial-feedback builder + form + dialog
 9e44b1f test(frontend): cover Report-wrong empty-state and non-string seeding
@@ -134,7 +148,7 @@ cd frontend && npm run lint                : clean
 cd frontend && npm test                    : 19 files / 137 tests passed
 cd frontend && npm run build               : 455 KB / 141 KB gzipped
 cd frontend && EMERGE_E2E=1 npx playwright test walking_skeleton : 1 passed (21.2s, warm Gemini)
-cd backend  && uv run pytest -q            : 240 passed, 2 skipped, 4 warnings (R8.7 frontend-only — backend untouched since R8.5)
+cd backend  && uv run pytest -q            : 252 passed, 2 skipped, 4 warnings (post-hygiene closure: +3 vibe-check helper, +1 route-level lock flip, +8 GeminiJudgeProvider unit tests)
 ```
 
 ### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4 + R8.7 automated)
@@ -156,18 +170,26 @@ Open UX findings from those smokes are tracked in the hygiene tail. See §13 bel
 
 ---
 
-## 2. Next: R8 MVP exit-gate audit
+## 2. Next: R8 MVP exit-gate audit → §13 P0 release hardening
 
-R8.7 landed in `151e2de`. The R8 Productization MVP is **functionally complete on this branch**. Next session should run the §12 exit-gate checklist as a manual audit — every item except #15 (the E2E) is already validated by automated CI (`npm run lint && npm test && npm run build && uv run pytest`); #15 is now also validated when `EMERGE_E2E=1 npx playwright test walking_skeleton` runs against a live backend with provider key reachable.
+R8.7 + both hygiene-tail backend gaps now landed. The R8 Productization MVP is **functionally complete and end-to-end validated on this branch**. The §12 exit gate is satisfied: every item is covered by either automated CI (`npm run lint && npm test && npm run build && uv run pytest`) or the walking-skeleton E2E.
 
-Two backend gaps surfaced by R8.7 (now in hygiene-tail §3c) should be triaged before tagging this MVP as shippable to integrators:
+Recommended next-session path: **§13 P0 — Release hardening / dogfood**:
+1. Small release-checklist script that runs lint/test/build + backend pytest + (optionally) `EMERGE_E2E=1 npx playwright test walking_skeleton`. Output one-line PASS/FAIL summary.
+2. Demo doc for local walkthrough — placeholder `EMERGE_API_KEY` only, no real keys.
+3. Pin the API-key one-time-reveal contract with a regression test (already covered in `api_key_reveal_modal.test.tsx`; verify it asserts no localStorage write).
+4. Verify `published_version_id` semantics survive Lab activation cycles — already tested in `test_publish.py`; do a final dogfood walk.
+5. Migration risk for global `api_code` uniqueness: production/staging DB must have no duplicate non-null `api_code` before Alembic 0015. Surface a one-line `select count(*) from projects group by api_code having count(*) > 1` script.
+6. Decide merge strategy into `main`. `origin/main` and local `main` may have diverged — inspect branch graph first; do not push without user approval.
 
-1. `get_judge_provider()` raises `NotImplementedError` in production. R6's `default_model_pro` settings split (per CLAUDE.md model-tier-split memory) needs a real Gemini-pro-backed `JudgeProvider` registered. Today the `/judge` endpoint cannot be exercised by anyone except tests.
-2. Vibe-check / review-queue interaction with corrections is correct per spec §4.1 but counterintuitive: a doc is dropped from the review pool the instant the user saves an annotation, even if the saved annotation is the user's first pass and they intend to revisit. Whether this is the desired UX or whether v1.1 should let users explicitly mark a doc "needs review" is a product decision.
+Two minor gate-review items remain open from this session (both deferrable):
 
-Either is "real but non-blocking" for R8 MVP per the original cut list — flag for v1.1 prioritisation discussion.
+- **Naming**: `ignore_annotations=include_corrected` reads as a double negative. Reviewer suggested renaming the kwarg to `include_corrected_docs` so both layers share the word. Sweep when `recompute.py` is next touched.
+- **Helper roundtrips**: `vibe_check_includes_corrected` does two SELECTs (project, then version) instead of a join. Tiny on SQLite, real on Postgres for hot endpoints. Profile-driven; defer.
 
-Once those are triaged, the recommended next-session path is **§13 P0 — Release hardening / dogfood**.
+Once R8 MVP exit-gate is signed off, the v1.1 backlog (§13 P1+) opens up: schema-editor chat mode, AutoResearch viewer, real PDF preview, NL-first onboarding.
+
+### Historical "next" pointer (kept for archival reference)
 
 ### Historical R8.7 entry detail (kept for reference)
 
@@ -319,13 +341,12 @@ Prompt 6 (DONE)  => R8.5 Field Evidence display (backend payload + popover/chip)
 Prompt 7 (DONE)  => R8.6 Partial Feedback UI: builder + API Console form
                     + Studio Report-wrong dialog (gate-fix in f8f845e,
                     test-coverage follow-up in 9e44b1f)
-Prompt 8 (DONE)  => R8.7 Walking Skeleton E2E (151e2de) — judge POST
-                    dropped, 3rd uncorrected doc added; both adaptations
-                    forced by backend reality (judge_provider not wired
-                    + vibe-check pool semantics, see §13)
-NEXT             => R8 MVP exit-gate audit (§12) → §13 P0 Release
-                    hardening / dogfood, after triaging the two backend
-                    gaps from §2.
+Prompt 8 (DONE)  => R8.7 Walking Skeleton E2E (151e2de) + hygiene-tail
+                    closure: gap #51 vibe-check lifecycle (9659493 +
+                    f0b51e4), gap #50 GeminiJudgeProvider (fa72157 +
+                    60f136d), /judge re-enabled in spec (8a317e4).
+NEXT             => §13 P0 Release hardening / dogfood. Both R8.7
+                    backend gaps closed; R8 MVP exit-gate satisfied.
 ```
 
 §5–§7 below preserve the historical R8.1 / R8.2 / R8.3 prompts as reference for the patterns those phases established; new sessions don't need to re-implement them. Skip directly to §8 (R8.4) when starting fresh.
