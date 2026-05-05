@@ -189,8 +189,6 @@ Two minor gate-review items remain open from this session (both deferrable):
 
 Once R8 MVP exit-gate is signed off, the v1.1 backlog (§13 P1+) opens up: schema-editor chat mode, AutoResearch viewer, real PDF preview, NL-first onboarding.
 
-### Historical "next" pointer (kept for archival reference)
-
 ### Historical R8.7 entry detail (kept for reference)
 
 Authoritative R8.7 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.7 — Walking Skeleton E2E** (around lines 879+).
