@@ -35,6 +35,17 @@ class _FakeClient:
         self.aio = _FakeAio(response_text)
 
 
+class _FakeSettings:
+    """Minimal stand-in for app.settings.settings — the prod Settings model
+    instantiates a network-touching provider client at import time, which
+    we don't want in unit tests."""
+
+    def __init__(self, *, provider: str):
+        self.default_provider = provider
+        self.default_model_pro = "test-pro"
+        self.google_api_key = "test-key"
+
+
 @pytest.mark.asyncio
 async def test_judge_parses_well_formed_response_into_verdict_map():
     body = '{"0": {"shop_name": "up", "total": "down"}, "1": {"shop_name": "uncertain"}}'
@@ -180,14 +191,3 @@ def test_get_judge_provider_raises_for_unsupported_provider(monkeypatch):
     monkeypatch.setattr("app.settings.settings", _FakeSettings(provider="openai"))
     with pytest.raises(NotImplementedError, match="default_provider='openai'"):
         get_judge_provider()
-
-
-class _FakeSettings:
-    """Minimal stand-in for app.settings.settings — the prod Settings model
-    instantiates a network-touching provider client at import time, which
-    we don't want in unit tests."""
-
-    def __init__(self, *, provider: str):
-        self.default_provider = provider
-        self.default_model_pro = "test-pro"
-        self.google_api_key = "test-key"
