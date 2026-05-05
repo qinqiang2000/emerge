@@ -56,11 +56,26 @@ class FakeJudgeProvider:
 
 
 def get_judge_provider() -> JudgeProvider:
-    """FastAPI dep. Default raises — production wiring (gemini-3.1-pro-preview-backed
-    JudgeProvider) lands with R6's `default_model_pro` settings split per CLAUDE.md.
-    Tests substitute via `app.dependency_overrides[get_judge_provider] = lambda: fake`.
+    """FastAPI dep. Returns the production JudgeProvider for the configured
+    settings.default_provider. Tests can still substitute via
+    `app.dependency_overrides[get_judge_provider] = lambda: fake` — this is
+    the path test_score_routes.py / test_judge_runner.py already use.
+
+    Per CLAUDE.md model-tier-split memory, the judge model is
+    `settings.default_model_pro` (Gemini Pro), distinct from the cheap
+    extraction model (`settings.default_model_gemini`, flash). The provider
+    pulls the model id at construction time so a settings change requires
+    only a process restart, not a code edit.
     """
-    raise NotImplementedError("configure judge provider via dependency_overrides or settings")
+    from app.engine.providers.gemini_judge_provider import GeminiJudgeProvider
+    from app.settings import settings
+
+    if settings.default_provider == "gemini":
+        return GeminiJudgeProvider()
+    raise NotImplementedError(
+        f"no JudgeProvider for default_provider={settings.default_provider!r}; "
+        "add an OpenAIJudgeProvider or override via app.dependency_overrides"
+    )
 
 
 async def run_judge(
