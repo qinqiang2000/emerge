@@ -73,6 +73,15 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 
 ---
 
+## 3a. R8.4 minors
+
+| # | Origin | File / area | Item |
+|---|--------|-------------|------|
+| 45 | smoke (R8.4) | `frontend/src/components/ReviewInboxBanner.tsx` "all docs" count + en.json `review.all_count` | On project 2 (test1) the banner reads `0 docs total` while the Documents table below clearly shows 2 extracted docs. Backend semantics are correct: `review-queue.all` is the vibe-check pool, which is empty until judge has run. The dedicated `/review` page footer-hint already qualifies this ("Every document in the current vibe-check set."), but the banner does not — the bare phrase reads like "no documents exist". Suggest re-wording to `0 in vibe-check` (or appending `· vibe-check` chip) so the discrepancy with the table is self-explanatory. Non-blocking; tracked for R8.5 territory where the readiness/judge wiring is next touched. |
+| 46 | smoke (R8.4) | `frontend/src/i18n/locales/en.json` `review.required_count` etc. | Pluralisation: "1 need review" should be "1 needs review"; same for `spot_check_count` / `all_count`. i18next supports `_one` / `_other` keys. Cosmetic; current count copy is acceptable at scale > 1. |
+
+---
+
 ## 4. Resolved (kept for audit trail)
 
 - ~~(21)~~ ProjectSubNav explicit `onApi` check → fixed in `e282200` (R8.2.c).
