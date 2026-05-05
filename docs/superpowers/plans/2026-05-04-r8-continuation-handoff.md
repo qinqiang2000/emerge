@@ -1,7 +1,7 @@
 # R8 continuation handoff — R8.4 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.5 evidence popover + chip + gate-review polish)
+Last refreshed: 2026-05-05 (post R8.6 partial-feedback builder + API Console form + Studio Report-wrong dialog)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -28,11 +28,11 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state (2026-05-05 refresh, post R8.5)
+## 1. Current live state (2026-05-05 refresh, post R8.6)
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    bd43798 test(frontend): cover popover dismissal paths and clarify allow-list intent
+HEAD:    9e44b1f test(frontend): cover Report-wrong empty-state and non-string seeding
 status:  clean
 ```
 
@@ -58,9 +58,23 @@ R8 commits remain on `r8-productization-mvp`, not in local or remote `main`. Con
 
 R8.5 gate review (subagent): both commits ready-to-merge with no Critical/Important findings. Backend reviewer's only Important note (tautological leak-defense test) was applied as `3c1428b`. Frontend reviewer's only Minor that warranted action (no close-behavior tests) was applied as `bd43798`. Other minor notes were either (a) cosmetic dead branches in ConfidenceChip's silent path that defensive-code as designed, (b) `console.warn` unconditionality matching existing `ReadinessPanel` precedent, or (c) premature DRY suggestions to be revisited when R8.6 needs the same sanitiser.
 
+**R8.6 — Partial Feedback UI**: split into three feature commits + one gate-fix + one test-coverage commit.
+- **R8.6.a builder + types** (`b9d4584`): new `frontend/src/lib/feedback.ts` exporting `FeedbackIssueType` (literal union of the five backend Literal values), `FEEDBACK_ISSUE_TYPES` runtime tuple, `FeedbackCorrection`, `PartialFeedbackPayload`, `buildPartialFeedback({predictionId, corrections, issueType?, notes?})`, and `fieldPathFor(entityIndex, key, arrayIndex?)`. Pure validating builder, no axios, no key handling. 15 specs cover dotted/array path composition, the arrayIndex-0-not-falsy edge, omission of optional issue_type/notes, empty-corrections rejection, positive integer request_id, the five issue_type literals, and per-correction field_path / entity_index validation.
+- **R8.6.b API Console form** (`92937de` + gate-fix `f8f845e`): expanded the existing read-only "Partial feedback example" panel into a dual surface — JSON example + curl snippet stay always visible, and a new interactive `<FeedbackTestForm apiCode>` mounts beneath when `apiKeys.length > 0`. Pasted plaintext API key lives only in component state (cleared on success and on unmount via `useEffect` cleanup); two specs pin this — `Storage.prototype.setItem` spy confirms no localStorage write contains the plaintext, and an unmount-remount cycle yields an empty key field. Submit POSTs to `/extract/{api_code}/feedback` with `X-Api-Key`, surfaces the returned `counterexample_id`, and translates `EmergeError` via `emergeErrorKey`. `correct_value` JSON-parses with plain-string fallback. Gate review (subagent) flagged two Important findings, both fixed in `f8f845e`: (1) JWT-bleed onto the public-feedback POST — the shared axios instance carries `Authorization: Bearer <jwt>` on `defaults.headers.common`, which would smuggle a session credential onto a public boundary that authenticates only via X-Api-Key; now we explicitly set `Authorization: undefined` on the per-request `headers` (axios v1 drops headers whose value is undefined), with a new spec asserting the recorded `opts.headers.Authorization` is falsy. (2) Wrong i18n key on bad entity_index — added `feedback.errors.entity_index_must_be_non_negative` and a spec asserting the alert text matches. Plus three minor cleanups: `canSubmit` now requires `requestIdStr.length > 0`; dead `feedback.errors.field_path_required` branch removed; unused `feedback.errors.key_required` and `feedback.issue_type_placeholder` keys dropped. R8.6.a reviewer's deferred-validation note about `fieldPathFor` not validating its `key` was correctly carried into R8.6.c (first real caller); R8.6.b takes `field_path` as free-text input.
+- **R8.6.c Studio Report-wrong dialog** (`69bfdc8` + test-coverage follow-up `9e44b1f`): new `frontend/src/components/ReportWrongFieldDialog.tsx` opens via a Flag-icon trigger button per `FieldRow`, sitting in the same R8.5 affordance flex row alongside `ConfidenceChip` and `FieldEvidencePopover`. Pre-fills `entityIndex`, computed `fieldPath` (via `fieldPathFor`, which now validates the identifier regex), and read-only current value; user types corrected value into a single Input. A `<details>` panel "What integrators would send" renders the equivalent `PartialFeedbackPayload` JSON via `buildPartialFeedback(...)` so users see the public contract without sending it. Save calls a new `useStudio.reportWrong({projectId, entityIndex, fieldName, correctValue})` store action that loads the latest baseline (annotation if present, else prediction), patches the single field, and POSTs `/api/v1/projects/{pid}/documents/{did}/annotations` with `parent_prediction_id`. Lab MUST NOT call `/extract/.../feedback`; the test pins this with a per-call URL assertion. The dialog disables Save when `latest_prediction.id` is null and shows an inline alert. Gate-review verdict: Ready-to-merge, no Critical/Important. R8.6.a deferred-validation item (#1) folded in: `fieldPathFor` now validates `key` against the backend `_SEG` identifier regex `/^[a-zA-Z_][a-zA-Z0-9_]*$/` and rejects non-non-negative-integer arrayIndex, with two new specs in `partial_feedback_payload.test.ts` covering the rejection paths. Reviewer's two Minor test-gap recommendations (Save-disabled empty-state + non-string `currentValue` JSON.stringify seeding) landed as `9e44b1f`. **Plan signature deviations**, both improvements, both intentional: (a) the dialog takes `fieldName: string` instead of the planned `fieldPath: string` and routes through `fieldPathFor` so the validation runs in a single source of truth; (b) the planned `issueType`/`notes` props on `reportWrong` were dropped because they are partial-feedback envelope metadata with no Annotation columns to map to — threading them through would silently drop `issue_type` and `notes` is already redundant with the dialog's free-text edit. The visible "What integrators would send" panel is the contract-teaching surface; users don't need to fill the metadata in Lab.
+
+R8.6 gate reviews (3 subagent rounds): all green, no Critical, two Important during R8.6.b (both fixed in `f8f845e`), two Minor test-gap follow-ups during R8.6.c (both fixed in `9e44b1f`). Other Minor items deferred (stylistic renames, Flag-icon discoverability, no-op annotation guard, Radix `act()` warning suppression).
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+9e44b1f test(frontend): cover Report-wrong empty-state and non-string seeding
+69bfdc8 feat(frontend): Studio Report-wrong dialog reuses partial-feedback shape
+f8f845e fix(frontend): apply R8.6.b gate-review fixes to FeedbackTestForm
+92937de feat(frontend): API Console partial-feedback example and test form
+b9d4584 feat(frontend): partial feedback payload builder and types
+e0cd152 docs(hygiene): track R8.5 smoke findings (47/48/49)
+6885183 docs(handoff): refresh after R8.5 evidence popover + chip + gate-review polish
 bd43798 test(frontend): cover popover dismissal paths and clarify allow-list intent
 1a5a3e9 feat(frontend): Studio per-field evidence popover and confidence chip
 3c1428b test(api): rename evidence pass-through test and use real key-walk
@@ -104,9 +118,9 @@ b813e6f docs: add R8 productization MVP overlay plan
 
 ```text
 cd frontend && npm run lint                : clean
-cd frontend && npm test                    : 16 files / 97 tests passed
-cd frontend && npm run build               : 442 KB / 138 KB gzipped
-cd backend  && uv run pytest -q            : 240 passed, 2 skipped, 4 warnings
+cd frontend && npm test                    : 19 files / 137 tests passed
+cd frontend && npm run build               : 455 KB / 141 KB gzipped
+cd backend  && uv run pytest -q            : 240 passed, 2 skipped, 4 warnings (R8.6 frontend-only — backend untouched since R8.5)
 ```
 
 ### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4)
@@ -125,11 +139,11 @@ Open UX findings from those smokes are tracked in the hygiene tail. See §13 bel
 
 ---
 
-## 2. R8.6 entry point — read this then dive in
+## 2. R8.7 entry point — read this then dive in
 
-Authoritative R8.6 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.6 — Partial Feedback UI** (around lines 717–875).
+Authoritative R8.7 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.7 — Walking Skeleton E2E** (around lines 879+).
 
-R8.6 in one paragraph: expose the public partial-feedback payload shape (`{ request_id, corrections: [{entity_index, field_path, correct_value, comment?}], issue_type?, notes? }`) in two surfaces, both backed by the existing backend contract — no new endpoints. (A) **API Console**: a read-only example panel showing the payload + a curl snippet using the `EMERGE_API_KEY` placeholder; an interactive "Send test feedback" form gated on at least one API key existing, with a transient (component-state-only, never-persisted) plaintext-key field that calls `POST /extract/{api_code}/feedback` with `X-Api-Key`. (B) **Studio**: a `Report wrong field` dialog that lives next to the new R8.5 evidence popover button. The dialog displays the same JSON shape (read-only) so users see the contract, but in Lab it submits a regular `POST /annotations` (Lab has no API key and posting through the public endpoint would defeat UX). Three commits per overlay; full TDD on each.
+R8.7 in one paragraph: a single Playwright spec that walks the full happy path, end-to-end, against a live backend with provider key configured by the environment, without printing any secret. Touches every R8 surface: register → create from non-empty builtin (`japan_receipt`) → upload sample PDF(s) → extract → Studio edit + save correction (loop on a second doc to satisfy lock-status) → Schema lock → API Console Activate-for-API + create key + one-time reveal + ack → Send test feedback (form OR `request.post` from Playwright) with the freshly-revealed plaintext key + a known prediction_id → ReadinessPanel `regression_health.counterexamples_total >= 1` → `/projects/:id/review` has at least one section non-empty (after `POST /api/v1/projects/:id/judge` to materialise verdicts).
 
 Suggested Claude Code prompt for the next session:
 
@@ -140,114 +154,106 @@ Continue R8 Productization MVP on branch r8-productization-mvp at
 Pre-read in order before any work:
 1. CLAUDE.md
 2. docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md
-3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.6 (R8.6.a builder, R8.6.b API Console form, R8.6.c Studio dialog)
+3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.7 (Walking Skeleton E2E)
 4. docs/superpowers/plans/2026-05-04-r8-hygiene-tail.md
-5. docs/superpowers/specs/2026-05-02-overall-design.md §1, §2.4, §11 (counterexample / feedback semantics)
-6. backend/app/schemas/annotation.py (FeedbackIn shape, the five issue_type literals)
-7. backend/app/services/corrections.py (apply_feedback_corrections — dotted field-path conventions)
+5. docs/superpowers/specs/2026-05-02-overall-design.md §1, §7 (publish / API key flow)
+6. frontend/playwright.config.ts and any existing frontend/e2e/* skeletons
 
 Verify health at HEAD before starting:
 - cd frontend && npm run lint && npm test && npm run build
 - cd backend  && uv run pytest -q
+- Confirm a provider key (Gemini / Anthropic) is configured for the
+  backend so /extract works end-to-end. Do NOT print the value.
 
-Then implement Phase R8.6 per the overlay, in three commits:
+Then implement Phase R8.7 per the overlay (one commit):
 
-R8.6.a — frontend payload builder (TDD-only, no UI):
-  - Create frontend/src/lib/feedback.ts exporting FeedbackIssueType
-    (literal union of the five backend Literal values), FeedbackCorrection,
-    PartialFeedbackPayload, buildPartialFeedback(args), fieldPathFor(...).
-  - TDD: write frontend/src/__tests__/partial_feedback_payload.test.ts
-    first. Cover dotted/array path composition, empty-corrections rejection,
-    issue_type literal-only acceptance, request_id positivity check.
-  - Commit: feat(frontend): partial feedback payload builder and types
+R8.7 — Walking Skeleton E2E:
+  - Create frontend/e2e/walking_skeleton.spec.ts (scenario in §11 of
+    this handoff and overlay lines ~879+).
+  - Add frontend/e2e/fixtures/sample.pdf (any 1-page PDF).
+  - The spec must:
+    - register fresh user → /projects empty
+    - create from a non-empty builtin (japan_receipt) → /projects/:id
+      shows ReadinessPanel + Review Inbox banner + Document table
+    - upload sample.pdf → row appears with status=uploaded
+    - trigger extract → row transitions to status=extracted
+      (allow generous timeout — 60s — for cold provider call)
+    - open Studio → edit one field → Save correction → re-open →
+      annotation override visible. Repeat for a 2nd uploaded doc so
+      lock-status has 2+ saved corrections with stable fields.
+    - /projects/:id/schema → lock the schema
+    - /projects/:id/api-console → Activate-for-API → create key →
+      modal plaintext + ack → close
+    - In the SAME tab: paste the freshly-revealed plaintext key into
+      the FeedbackTestForm + a known prediction_id from step 4 →
+      counterexample_id surfaces. (Or use Playwright request.post if
+      that is more reliable; the spec must NOT print the key value
+      to test logs.)
+    - Trigger POST /api/v1/projects/:id/judge so vibe-check verdicts
+      materialise; verify ReadinessPanel
+      regression_health.counterexamples_total >= 1.
+    - /projects/:id/review has at least one section non-empty.
+  - Scenario MUST NOT log the plaintext API key, the JWT, or the
+    provider key. Use page.evaluate to fetch DOM contents only when
+    necessary.
+  - Commit: test(frontend): walking-skeleton E2E covers publish + readiness + feedback
 
-R8.6.b — API Console feedback example + interactive test form:
-  - Modify pages/ApiConsole.tsx to expand the existing "Partial feedback
-    example" section into a dual panel: read-only docs + interactive
-    <FeedbackTestForm apiCode> gated on at least one API key existing.
-  - Create components/FeedbackTestForm.tsx. Plaintext API key lives in
-    transient component state only — never localStorage, never store,
-    cleared on submit success and on unmount. Fields: request_id,
-    entity_index, field_path, correct_value (JSON-parsed with string
-    fallback), comment, issue_type Select (5 backend literals), notes.
-  - On submit: api.post(`/extract/${apiCode}/feedback`, payload, {
-      headers: { 'X-Api-Key': pastedKey } }). Show counterexample_id on
-    success (toast or inline). Translated EmergeError on failure.
-  - i18n: feedback.* and feedback.issue_type.* in en.json.
-  - TDD: extend api_console.test.tsx + new feedback_test_form.test.tsx
-    asserting URL, X-Api-Key header, payload shape, transient-state
-    clearing on unmount, and form gated on key existence.
-  - Commit: feat(frontend): API Console partial-feedback example and test form
+Conventions to carry through (R8.1–R8.6):
+- After the commit, dispatch superpowers:requesting-code-review (NOT
+  a bare general-purpose agent — see memory
+  feedback_gate_review_subagent.md). The R8.7 reviewer should look
+  for:
+  * No secrets printed (X-Api-Key plaintext, JWT, provider key).
+  * Selectors using accessible queries (getByRole / getByLabelText
+    where possible) rather than CSS classes that may churn.
+  * Generous waits keyed on observable state (status=extracted,
+    counterexamples_total >= 1) rather than fixed sleeps.
+  * The judge call is fired BEFORE asserting the review queue, not
+    after.
+- When you touch hygiene-tail items naturally (44 quality CI when 0
+  obs, 45/46 review-inbox banner plural copy, 47/48 popover
+  console.warn dedupe + source_text_hash render) sweep them in the
+  same commit. Items (49) operational note about seeded predictions
+  in the dogfood DB is informational only.
+- After the commit, refresh this handoff doc once more and STOP for
+  the human R8 MVP exit-gate review (see §12).
 
-R8.6.c — Studio Report-wrong dialog:
-  - Create components/ReportWrongFieldDialog.tsx. Opened via a small
-    "Report wrong" affordance on each field row (place next to R8.5's
-    Quote-icon evidence button). Pre-fills entity_index, field_path,
-    current value. Read-only collapsible "What integrators would send"
-    JSON block uses buildPartialFeedback to render the equivalent public
-    payload — the user learns the contract without sending it.
-  - Modify stores/studio.ts: add reportWrong({ entityIndex, fieldPath,
-    correctValue, issueType?, notes? }) that loads the latest prediction
-    output, applies the single correction client-side, and POSTs a
-    regular Annotation. Lab MUST NOT call /extract/.../feedback —
-    auth model is wrong and there's no key surface in Lab.
-  - i18n: studio.report_wrong.*.
-  - TDD: __tests__/report_wrong_dialog.test.tsx covering pre-fill,
-    submit calls annotation POST not feedback POST, displayed JSON
-    shape matches PartialFeedbackPayload contract, Cancel calls no API.
-  - Commit: feat(frontend): Studio Report-wrong dialog reuses partial-feedback shape
-
-Conventions to carry through (R8.1–R8.5):
-- TDD: spec test first, watch RED, implement, watch GREEN.
-- useT() for every visible string; semantic Tailwind tokens only.
-- EmergeError → errors.<code> i18n; emergeCode/emergeErrorKey from lib/api.
-- After EACH commit, dispatch superpowers:requesting-code-review (NOT a
-  bare general-purpose agent — see memory feedback_gate_review_subagent.md).
-- When you touch a file, sweep matching items from the hygiene tail
-  in the same commit. Mirror every visible string into en.json.
-- After all three commits, refresh the handoff doc and STOP for human
-  checkpoint before R8.7.
-
-R8.6 hard rules:
-- Plaintext API key NEVER persists outside transient component state.
-  Verify by component test: re-mounting yields empty key field.
-- Studio Report-wrong NEVER calls /extract/.../feedback. Lab uses
-  authenticated /annotations only. The shared JSON shape is
-  educational, not the transport.
-- Counterexample semantics never apply in Lab (Annotations posted from
-  Studio remain role=none). Spec §1.
-- Snippets / examples only ever use the literal placeholder
-  `EMERGE_API_KEY`.
+R8.7 hard rules:
+- Never read, print, or log secrets — provider key, JWT, X-Api-Key
+  plaintext.
+- E2E spec must run against a real backend with a real provider key;
+  if the provider call fails, the spec SHOULD fail (don't auto-skip).
+  Local dev convenience: an env flag (EMERGE_E2E=1) gates the spec.
+- The spec MUST exercise the publish flow against /extract/{api_code}
+  with the freshly-revealed key — that is the whole point of the
+  walking skeleton.
 - No bbox / coordinates / regions / polygons / spans anywhere
-  (continues from R8.5).
+  (continues from R8.5/R8.6).
 
-Out of scope: R8.7 Walking Skeleton E2E, AutoResearch viewer,
+Out of scope for R8.7 (and R8 MVP entirely): AutoResearch viewer,
 MatchingProject, VerificationProject, real PDF preview, Studio entity
-nav / collapse. Never read or print secrets — including provider keys
-in backend/.env, the Anthropic key, JWT contents, or any X-Api-Key
-plaintext outside the one-time reveal modal and the new transient
-form input.
+nav / collapse, schema chat mode, NL-first onboarding.
 
-R8.5 context the new session should know:
-- types/studio.ts owns FieldEvidence, PerFieldEvidence,
-  PerFieldConfidence, ConfidenceVerdict, and EVIDENCE_ALLOWED_KEYS
-  (a *runtime* allow-list, not just a TS hint). Reuse the shape;
-  do not duplicate.
-- components/FieldEvidencePopover.tsx exports both
-  FieldEvidencePopover and ConfidenceChip. Studio per-field rows
-  already render both; the new "Report wrong" trigger should sit in
-  the same flex row to keep the field-level affordances together.
-- Studio.tsx FieldRow now uses useId() + aria-labelledby instead of a
-  wrapping <label>. New trigger buttons go inside the existing
-  inline flex container next to the field name; do not re-wrap.
-- The R8.5 popover's pickAllowedKeys + EVIDENCE_ALLOWED_KEYS pattern
-  is the model for the R8.6 transient-key form: keep secrets in
-  component state, never persist, console.warn on drift. The
-  R8.6 reviewer will look for this symmetry.
-- Hygiene tail item (44) on readiness quality CI with 0 obs is still
-  open; not naturally re-touched in R8.6 unless you also visit
-  ReadinessPanel. Items (45/46) on review-inbox banner copy/plural
-  are also still open and unrelated to R8.6 scope.
+R8.6 context the new session should know:
+- lib/feedback.ts is the single shared serializer for both the
+  public-facing API Console form and the in-Lab Studio Report-wrong
+  dialog. fieldPathFor now validates the identifier regex; reuse it.
+- components/FeedbackTestForm.tsx keeps the pasted plaintext API key
+  in component state only (cleared on success + on unmount). The
+  axios `Authorization` header is explicitly overridden to undefined
+  on the public-feedback POST so the JWT does not bleed onto the
+  public boundary.
+- components/ReportWrongFieldDialog.tsx mirrors the partial-feedback
+  shape READ-ONLY for users to learn the contract, but Lab posts to
+  /annotations. The Flag-icon trigger sits in the FieldRow flex row
+  next to the evidence popover button (R8.5).
+- stores/studio.ts now exposes reportWrong({projectId, entityIndex,
+  fieldName, correctValue}) that piggybacks the existing
+  /annotations endpoint and inherits role=none from
+  save_correction(...).
+- Hygiene tail items (44, 45, 46, 47, 48) are still open; (49) is
+  operational. Don't expand R8.7 scope to chase them unless the E2E
+  spec naturally re-touches the same files.
 ```
 
 ---
@@ -280,8 +286,10 @@ Prompt 3 (DONE)  => R8.2 API Console + publish flow + one-time API key reveal
 Prompt 4 (DONE)  => R8.3 API Readiness Panel + gate-review fixes + hygiene 8/17
 Prompt 5 (DONE)  => R8.4 Review Inbox + sub-nav useMatch + hygiene 22
 Prompt 6 (DONE)  => R8.5 Field Evidence display (backend payload + popover/chip)
-Prompt 7 (NEXT)  => R8.6 Partial Feedback UI, public shape + in-Lab reuse
-Prompt 8         => R8.7 Walking Skeleton E2E
+Prompt 7 (DONE)  => R8.6 Partial Feedback UI: builder + API Console form
+                    + Studio Report-wrong dialog (gate-fix in f8f845e,
+                    test-coverage follow-up in 9e44b1f)
+Prompt 8 (NEXT)  => R8.7 Walking Skeleton E2E
 ```
 
 §5–§7 below preserve the historical R8.1 / R8.2 / R8.3 prompts as reference for the patterns those phases established; new sessions don't need to re-implement them. Skip directly to §8 (R8.4) when starting fresh.
