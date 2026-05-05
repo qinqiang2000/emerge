@@ -124,6 +124,62 @@ describe("FieldEvidencePopover — no-evidence path", () => {
   });
 });
 
+describe("FieldEvidencePopover — dismissal", () => {
+  const evidenceMap: PerFieldEvidence = {
+    "0": {
+      total: { page: 1, quote: "Total ¥1,234", rationale: "tax-included" },
+    },
+  };
+
+  it("toggles closed when the trigger is clicked again", () => {
+    render(
+      <FieldEvidencePopover
+        entityIndex={0}
+        fieldName="total"
+        evidenceMap={evidenceMap}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: TRIGGER_LABEL });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes when Escape is pressed", () => {
+    render(
+      <FieldEvidencePopover
+        entityIndex={0}
+        fieldName="total"
+        evidenceMap={evidenceMap}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: TRIGGER_LABEL }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes on a mousedown outside the popover", () => {
+    render(
+      <div>
+        <FieldEvidencePopover
+          entityIndex={0}
+          fieldName="total"
+          evidenceMap={evidenceMap}
+        />
+        <button data-testid="outside" type="button">
+          outside
+        </button>
+      </div>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: TRIGGER_LABEL }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
 describe("FieldEvidencePopover — bbox-leak defense", () => {
   it("never renders coordinate keys even if the backend leaks them", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

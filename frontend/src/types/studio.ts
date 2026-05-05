@@ -22,6 +22,9 @@ export type PerFieldConfidence = Record<
   Record<string, ConfidenceVerdict>
 >;
 
+// Runtime allow-list (not just a type hint): FieldEvidencePopover uses this
+// to drop any unknown / forbidden key before rendering. Keep it in sync with
+// FieldEvidence above.
 export const EVIDENCE_ALLOWED_KEYS: ReadonlyArray<keyof FieldEvidence> = [
   "page",
   "quote",
