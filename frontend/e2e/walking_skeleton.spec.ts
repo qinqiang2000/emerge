@@ -204,12 +204,27 @@ test.describe("walking skeleton", () => {
     };
     expect(typeof feedbackBody.counterexample_id).toBe("number");
 
-    // 10. /judge intentionally NOT called: get_judge_provider() raises
-    //     NotImplementedError until R6 wires the pro-model judge in
-    //     production (judge.py:58-63 — only dependency_overrides in tests
-    //     work today). The review-queue assertion below relies on the
-    //     unannotated 3rd doc populating the `all` section, which works
-    //     without judge verdicts.
+    // 10. Trigger judge so per_field_confidence verdicts materialise on the
+    //     uncorrected doc. After schema lock, vibe-check pool only contains
+    //     uncorrected predictions (gap-#51 strict mode), so judge_predictions
+    //     should be exactly 1 (the 3rd doc) — Gemini Pro returns verdicts
+    //     that flow into review-queue.required_review or .spot_check below.
+    const judgeResp = await page.request.post(
+      `/api/v1/projects/${projectId}/judge`,
+      { headers: authHeaders },
+    );
+    expect(
+      judgeResp.status(),
+      "judge endpoint must succeed now that GeminiJudgeProvider is wired",
+    ).toBe(200);
+    const judgeBody = (await judgeResp.json()) as {
+      judged_predictions: number[];
+      failed_predictions: number[];
+    };
+    expect(
+      judgeBody.judged_predictions.length,
+      "at least one prediction (the uncorrected doc) must be judged",
+    ).toBeGreaterThanOrEqual(1);
 
     // 11. ReadinessPanel reflects counterexamples_total ≥ 1 — verify via API
     //     (deterministic) and via UI (the "no production feedback" callout
