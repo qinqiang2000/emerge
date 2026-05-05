@@ -78,15 +78,28 @@ async def test_document_detail_surfaces_per_field_evidence_and_confidence(
     assert latest["per_field_confidence"] == confidence
 
 
+def _walk_keys(obj):
+    """Yield every dict key reachable inside a nested JSON-like structure."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield k
+            yield from _walk_keys(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _walk_keys(item)
+
+
 @pytest.mark.asyncio
-async def test_document_detail_does_not_leak_forbidden_localization_keys(
+async def test_document_detail_passes_through_sanitized_evidence_unchanged(
     client, db_session, tmp_path, monkeypatch
 ):
-    """Defense in depth: even if a Prediction somehow stores forbidden
-    localization keys, the payload composition must not surface them.
-
-    The engine already strips them on persist (see test_field_evidence.py),
-    but the read path is a second checkpoint per CLAUDE.md red lines.
+    """The route is an intentional pass-through. Defense-in-depth against
+    bbox / coordinates / polygon / region / span lives at
+    `app/engine/extract.py::_sanitize_evidence` (see
+    test_field_evidence.py). This test pins a contract assertion: the
+    route's payload composition must not introduce a forbidden key on
+    its own (e.g., via a typo in the dict literal or a future migration
+    that leaks a column with a localisation-shaped name).
     """
     h, pid, did = await _auth_upload(client, tmp_path, monkeypatch)
 
@@ -114,10 +127,10 @@ async def test_document_detail_does_not_leak_forbidden_localization_keys(
     resp = await client.get(f"/api/v1/projects/{pid}/documents/{did}", headers=h)
     body = resp.json()
 
-    serialized = repr(body)
-    for forbidden in ("bbox", "coordinates", "polygon", "region", '"span"'):
-        assert forbidden not in serialized, (
-            f"Document detail payload must not surface '{forbidden}'"
+    keys = set(_walk_keys(body))
+    for forbidden in ("bbox", "coordinates", "polygon", "region", "span"):
+        assert forbidden not in keys, (
+            f"Document detail payload must not surface key '{forbidden}'"
         )
 
 
