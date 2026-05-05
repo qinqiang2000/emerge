@@ -17,11 +17,15 @@ from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.document import Document
 from app.models.judge_calibration import JudgeCalibration
 from app.models.prediction import Prediction
+from app.models.project import Project
+from app.models.project_version import ProjectVersion
 
 DEFAULT_JUDGE_MODEL_VERSION = "claude-opus-4-7"
 
 
-def vibe_check_predictions_query(project_id: int) -> Select:
+def vibe_check_predictions_query(
+    project_id: int, *, ignore_annotations: bool = False
+) -> Select:
     """Spec §4.1: doc_ids of Documents in project whose latest Prediction is NOT covered
     by a saved Annotation(role='none'). An Annotation covers a Prediction when either
     (a) Annotation.parent_prediction_id IS NULL (doc-level cover, regardless of which
@@ -32,7 +36,17 @@ def vibe_check_predictions_query(project_id: int) -> Select:
 
     NB: Annotation.id and Prediction.id are independent autoincrement sequences, so
     bare id comparison across the two tables would not be a reliable temporal check.
+
+    `ignore_annotations=True` drops the coverage filter so the pool includes
+    corrected docs. Callers use this during schema-iteration (active version is
+    draft or absent) so users can revisit corrections, but switch back to the
+    strict pool once the schema is locked. See `vibe_check_includes_corrected`.
     """
+    has_prediction = exists().where(Prediction.document_id == Document.id)
+    if ignore_annotations:
+        return select(Document.id).where(
+            Document.project_id == project_id, has_prediction
+        )
     latest_pred_id = (
         select(func.max(Prediction.id))
         .where(Prediction.document_id == Document.id)
@@ -50,10 +64,31 @@ def vibe_check_predictions_query(project_id: int) -> Select:
             ),
         )
     )
-    has_prediction = exists().where(Prediction.document_id == Document.id)
     return select(Document.id).where(
         Document.project_id == project_id, has_prediction, ~covered_by_annotation
     )
+
+
+async def vibe_check_includes_corrected(
+    session: AsyncSession, project_id: int
+) -> bool:
+    """True iff the project's active version is draft or absent — the v1.1
+    UX fix for the "save once, doc disappears from review-queue" surprise
+    surfaced in R8.7. During iteration (draft schema) the user wants the full
+    pool visible so they can revisit corrections; once the schema is locked,
+    the strict spec §4.1 pool kicks in (corrected docs leave the queue).
+    """
+    p = (
+        await session.execute(select(Project).where(Project.id == project_id))
+    ).scalar_one_or_none()
+    if p is None or p.active_version_id is None:
+        return True
+    v = (
+        await session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == p.active_version_id)
+        )
+    ).scalar_one_or_none()
+    return v is None or not v.locked
 
 
 @dataclass
@@ -84,9 +119,15 @@ async def recompute_project_score(
     and long docs (e.g. invoices with many line items) on equal footing in the
     project-level number; per-field detail is still available via per_field_confidence.
     """
-    # 1. vibe-check docs
+    # 1. vibe-check docs (pool widens to include corrected docs while the
+    #    schema is still in iteration; see vibe_check_includes_corrected).
+    include_corrected = await vibe_check_includes_corrected(session, project_id)
     doc_ids = (
-        await session.execute(vibe_check_predictions_query(project_id))
+        await session.execute(
+            vibe_check_predictions_query(
+                project_id, ignore_annotations=include_corrected
+            )
+        )
     ).scalars().all()
 
     # 2. calibration → judge_precision_calibrated

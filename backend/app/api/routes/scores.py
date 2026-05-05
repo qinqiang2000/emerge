@@ -9,6 +9,7 @@ from app.db import get_session
 from app.engine.recompute import (
     DEFAULT_JUDGE_MODEL_VERSION,
     recompute_project_score,
+    vibe_check_includes_corrected,
     vibe_check_predictions_query,
 )
 from app.engine.score import (
@@ -105,8 +106,13 @@ async def get_review_queue(
     session: AsyncSession = Depends(get_session),
 ):
     await _project_or_404(session, project_id, workspace_id)
+    include_corrected = await vibe_check_includes_corrected(session, project_id)
     doc_ids = (
-        await session.execute(vibe_check_predictions_query(project_id))
+        await session.execute(
+            vibe_check_predictions_query(
+                project_id, ignore_annotations=include_corrected
+            )
+        )
     ).scalars().all()
     required: list[ReviewItemOut] = []
     up_only: list[ReviewItemOut] = []
@@ -149,8 +155,13 @@ async def trigger_judge(
     session: AsyncSession = Depends(get_session),
 ):
     await _project_or_404(session, project_id, workspace_id)
+    include_corrected = await vibe_check_includes_corrected(session, project_id)
     doc_ids = (
-        await session.execute(vibe_check_predictions_query(project_id))
+        await session.execute(
+            vibe_check_predictions_query(
+                project_id, ignore_annotations=include_corrected
+            )
+        )
     ).scalars().all()
     doc_ids = doc_ids[:50]
     # Serial commits per run_judge are acceptable: vibe-check is capped at 50 per spec §4.1.

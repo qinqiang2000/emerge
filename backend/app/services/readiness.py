@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.engine.recompute import (
     DEFAULT_JUDGE_MODEL_VERSION,
     recompute_project_score,
+    vibe_check_includes_corrected,
     vibe_check_predictions_query,
 )
 from app.engine.score import (
@@ -218,8 +219,13 @@ async def build_readiness(
         publish_blockers.append("schema_not_lock_candidate")
 
     # 5. risky fields from vibe-check predictions' per_field_confidence verdicts.
+    include_corrected = await vibe_check_includes_corrected(session, project_id)
     doc_ids = (
-        await session.execute(vibe_check_predictions_query(project_id))
+        await session.execute(
+            vibe_check_predictions_query(
+                project_id, ignore_annotations=include_corrected
+            )
+        )
     ).scalars().all()
     risky_count: dict[str, int] = {}
     for did in doc_ids:

@@ -1,6 +1,11 @@
 import pytest
+from sqlalchemy import select
 
-from app.engine.recompute import recompute_project_score, vibe_check_predictions_query
+from app.engine.recompute import (
+    recompute_project_score,
+    vibe_check_includes_corrected,
+    vibe_check_predictions_query,
+)
 from app.engine.score import HumanVerdict, JudgeVerdict
 from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
 from app.models.document import Document
@@ -215,3 +220,101 @@ async def test_vibe_check_re_includes_doc_after_re_extraction(db_session):
         await db_session.execute(vibe_check_predictions_query(pid))
     ).scalars().all()
     assert did in after
+
+
+@pytest.mark.asyncio
+async def test_vibe_check_query_with_ignore_annotations_includes_corrected_doc(
+    db_session,
+):
+    """v1.1 fix for the R8.7 hygiene-tail #51 surprise: during schema iteration
+    the user wants the corrected doc to stay in the review-queue so they can
+    revisit. ignore_annotations=True drops the coverage filter.
+    """
+    uid, pid, docs = await _setup_with_two_docs(db_session)
+    for did in docs:
+        db_session.add(
+            Prediction(
+                document_id=did,
+                project_version_id=None,
+                model_id="m",
+                prompt_hash="h",
+                output=[{"a": 1}],
+                per_field_confidence={"0": {"a": "up"}},
+                status=PredictionStatus.SUCCESS.value,
+            )
+        )
+    await db_session.commit()
+    db_session.add(
+        Annotation(
+            document_id=docs[1],
+            output=[{"a": 1}],
+            role=AnnotationRole.NONE.value,
+            status=AnnotationStatus.SAVED.value,
+            created_by=uid,
+            last_modified_by=uid,
+        )
+    )
+    await db_session.commit()
+
+    strict = [
+        row[0]
+        for row in (
+            await db_session.execute(vibe_check_predictions_query(pid))
+        ).all()
+    ]
+    assert set(strict) == {docs[0]}, "default mode still excludes corrected docs"
+
+    relaxed = [
+        row[0]
+        for row in (
+            await db_session.execute(
+                vibe_check_predictions_query(pid, ignore_annotations=True)
+            )
+        ).all()
+    ]
+    assert set(relaxed) == {docs[0], docs[1]}, "relaxed mode includes corrected"
+
+
+@pytest.mark.asyncio
+async def test_vibe_check_includes_corrected_helper_branches(db_session):
+    """Helper resolves to True (relaxed) when active version is missing or
+    draft, and False (strict spec §4.1) once the active version is locked.
+    """
+    uid, pid, _docs = await _setup_with_two_docs(db_session)
+
+    # _setup_with_two_docs leaves the project pointing at an unlocked v0.
+    assert await vibe_check_includes_corrected(db_session, pid) is True
+
+    # Lock the active version → switches to strict pool.
+    project = (
+        await db_session.execute(select(Project).where(Project.id == pid))
+    ).scalar_one()
+    version = (
+        await db_session.execute(
+            select(ProjectVersion).where(ProjectVersion.id == project.active_version_id)
+        )
+    ).scalar_one()
+    version.locked = True
+    await db_session.commit()
+    assert await vibe_check_includes_corrected(db_session, pid) is False
+
+    # Unknown project → safe-default True (don't accidentally hide pool entries
+    # for orphaned/being-set-up projects).
+    assert await vibe_check_includes_corrected(db_session, 999_999) is True
+
+
+@pytest.mark.asyncio
+async def test_vibe_check_includes_corrected_when_active_version_unset(db_session):
+    """Project without active_version_id — also safe-default True. Mirrors the
+    practical case where a project is created but no schema has been authored
+    yet (the very early lifecycle slice of empty projects)."""
+    user = User(email="orphan@x.com", password_hash="x")
+    db_session.add(user)
+    await db_session.flush()
+    ws = Workspace(name="W", owner_id=user.id)
+    db_session.add(ws)
+    await db_session.flush()
+    p = Project(workspace_id=ws.id, name="orphan", created_by=user.id)
+    db_session.add(p)
+    await db_session.commit()
+    assert await vibe_check_includes_corrected(db_session, p.id) is True
