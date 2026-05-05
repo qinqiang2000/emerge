@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
+
+from app.schemas._datetime import utc_aware
 
 
 def _validate_array_of_object(v):
@@ -37,6 +39,11 @@ class AnnotationOut(BaseModel):
     last_modified_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("created_at", "last_modified_at")
+    def _serialize_dt(self, v: datetime | None) -> str | None:
+        aware = utc_aware(v)
+        return aware.isoformat() if aware else None
 
 
 class AnnotationPatchIn(BaseModel):

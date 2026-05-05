@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
+from app.schemas._datetime import utc_aware
 from app.schemas.schema_field import SchemaField
 
 
@@ -17,6 +18,11 @@ class ProjectVersionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True, "protected_namespaces": ()}
+
+    @field_serializer("created_at")
+    def _serialize_dt(self, v: datetime | None) -> str | None:
+        aware = utc_aware(v)
+        return aware.isoformat() if aware else None
 
 
 class SchemaPatchIn(BaseModel):

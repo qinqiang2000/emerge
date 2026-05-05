@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.schemas._datetime import utc_aware
 
 
 class RunIn(BaseModel):
@@ -33,3 +35,8 @@ class AutoResearchRunOut(BaseModel):
     completed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("started_at", "completed_at")
+    def _serialize_dt(self, v: datetime | None) -> str | None:
+        aware = utc_aware(v)
+        return aware.isoformat() if aware else None
