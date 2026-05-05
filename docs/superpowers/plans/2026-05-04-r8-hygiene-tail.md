@@ -5,7 +5,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 **How to consume**: when you touch a file in R8.3+, sweep relevant items in the same commit. Items tagged with phase numbers (R8.5 / R8.6 / R8.7) are best deferred until those phases naturally re-touch the code. Items without a phase tag are free-running cleanup.
 
 **Conventions**:
-- `(N)` is a stable item id. Once resolved, mark with `~~(N)~~ → fixed in <hash>` in §3.
+- `(N)` is a stable item id. Once resolved, mark with `~~(N)~~ → fixed in <hash>` in §4.
 - "Origin" labels: `gate-review` (subagent reviewer), `smoke` (manual browser walk), `reviewer-cross-cutting` (phase-end observation).
 - Treat as advisory; the overlay plan (`2026-05-04-r8-productization-mvp.md`) and CLAUDE.md remain authoritative.
 
@@ -22,7 +22,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 | 5 | gate-review (R8.1.b) | `pages/ProjectCreate.tsx` | Optional: textarea placeholder also reads "Coming in v1.1" (currently the helper text says it but the field placeholder still says "Describe it..."). |
 | 6 | gate-review (R8.1.a–e) | `App.tsx`, test setup | React Router v7 `future` flag silencer — every test using MemoryRouter logs the v7 future warnings. Add `future={{v7_startTransition: true, v7_relativeSplatPath: true}}`. |
 | 7 | gate-review (R8.1.c onward), smoke | `__tests__/document_list.test.tsx`, `studio_save.test.tsx`, `schema_editor.test.tsx`, `api_console.test.tsx` | `act()` warnings — `useEffect → store.load()` promise chain triggers setState outside `act`. Replace per-test `settle()` with per-assertion `waitFor(...)`, or skip auto-load in tests via a flag, or migrate to MSW. **R8.2.c reuses the same pattern** (#41). |
-| ~~8~~ | gate-review (R8.1.c) | `stores/documents.ts:55-57` | ~~Drop manual `Content-Type: multipart/form-data` — axios sets it correctly with boundary.~~ Resolved — see §3. |
+| ~~8~~ | gate-review (R8.1.c) | `stores/documents.ts:55-57` | ~~Drop manual `Content-Type: multipart/form-data` — axios sets it correctly with boundary.~~ Resolved — see §4. |
 | 9 | gate-review (R8.1.c) | `pages/DocumentList.tsx:54` | `accept="application/pdf,image/*"` includes images even though backend doesn't process them; align with R8.5 evidence work. |
 | 10 | gate-review (R8.1.d) | `pages/Studio.tsx:154` | `<label>` wraps `<Input>` without explicit `htmlFor`/`id` for a11y. |
 | 11 | gate-review (R8.1.d), smoke | `pages/Studio.tsx` field rendering | **JSON.stringify type-coercion**: number `100` becomes string `"100"`, boolean `true` becomes `"true"` on save. R8.5 evidence-aware editor naturally fixes; track explicitly so v1 GA does not ship lossy mode. |
@@ -31,7 +31,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 | 14 | gate-review | cross-cutting | Optional `renderErrorKey(t, errKey)` helper for symmetry with future toasts. |
 | 15 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx` | Save POSTs even with no diff → no-op `version_number` bump on backend. Add dirty-check modeled on Studio. |
 | 16 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx:41-44` | Sync useEffect on `active` may overwrite in-flight local edits. Guard with `JSON.stringify` equality. |
-| ~~17~~ | gate-review (R8.1.e), reviewer-cross-cutting | Cross-store | ~~`errors.${code}` envelope mapping repeats in 6 stores; lift `emergeCode()` helper to `lib/api.ts`.~~ Resolved — see §3. |
+| ~~17~~ | gate-review (R8.1.e), reviewer-cross-cutting | Cross-store | ~~`errors.${code}` envelope mapping repeats in 6 stores; lift `emergeCode()` helper to `lib/api.ts`.~~ Resolved — see §4. |
 | 18 | gate-review (R8.1.e) | Test helpers | `settle()` helper copy-pasted in 3+ specs; extract to `__tests__/_helpers/settle.ts`. |
 | 19 | gate-review (R8.1.e) | `i18n/locales/en.json` | `schema.tab_form` and `schema.lock_status_blocked` defined but unused (`tab_chat` is the explicit chat-mode placeholder per overlay; keep). |
 | 20 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx:163-168` | Notes Textarea renders even when `draft.length === 0` — cosmetic inconsistency with no-fields empty state. |
@@ -65,7 +65,15 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 
 ---
 
-## 3. Resolved (kept for audit trail)
+## 3. R8.3 minors
+
+| # | Origin | File / area | Item |
+|---|--------|-------------|------|
+| 44 | smoke (R8.3) | `backend/app/services/readiness.py` quality + `frontend/src/components/ReadinessPanel.tsx` `QualityRow` | When `observation_count === 0` (and tp/fp both 0), the Bayesian prior surfaces as e.g. `80% ± 23%` next to a small "0 obs · vibe-check 0" tag. Technically correct but visually reads like an earned signal. Two options: (a) frontend mutes / hides the percentage when `observation_count === 0` (5-line `QualityRow` change); (b) backend returns `judge_precision = null` / null CI bounds when `observation_count === 0` and frontend renders "Not enough data" copy. Option (b) is cleaner — flag for whenever readiness payload is next touched (R8.5 evidence work would naturally re-touch the document detail / readiness path). Non-blocking. |
+
+---
+
+## 4. Resolved (kept for audit trail)
 
 - ~~(21)~~ ProjectSubNav explicit `onApi` check → fixed in `e282200` (R8.2.c).
 - ~~(24)~~ Plan §314/323 read-only field name/type wording → fixed in `2432ae9`.
@@ -79,7 +87,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 
 ---
 
-## 4. Smoke findings not yet ticketed
+## 5. Smoke findings not yet ticketed
 
 These came up during the R8.1 / R8.2 manual walks; none are blockers but worth flagging when their phase lands.
 
@@ -92,8 +100,8 @@ These came up during the R8.1 / R8.2 manual walks; none are blockers but worth f
 
 ---
 
-## 5. Maintenance
+## 6. Maintenance
 
 - After each phase commit, dispatch the gate-review subagent (per memory `feedback_gate_review_subagent.md`). Append fresh items here with the next free `(N)` and an origin tag.
-- When closing items, move the line to §3 with the resolving commit hash. Don't delete — the audit trail is cheap and the file is small.
+- When closing items, move the line to §4 with the resolving commit hash. Don't delete — the audit trail is cheap and the file is small.
 - If this file grows past ~80 items, time to take a sweep commit: pick a coherent batch (e.g. all i18n hygiene, or all act() warnings) and resolve them in one focused PR before R8.X+1.
