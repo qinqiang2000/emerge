@@ -1,6 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { useParams } from "react-router-dom";
 
+import {
+  ConfidenceChip,
+  FieldEvidencePopover,
+} from "@/components/FieldEvidencePopover";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,6 +14,10 @@ import {
   type DocumentDetail,
   type EntityOutput,
 } from "@/stores/studio";
+import type {
+  ConfidenceVerdict,
+  PerFieldEvidence,
+} from "@/types/studio";
 
 function isDirty(a: EntityOutput[], b: EntityOutput[]): boolean {
   return JSON.stringify(a) !== JSON.stringify(b);
@@ -130,8 +138,15 @@ export function StudioPage() {
                   {Object.entries(entity).map(([key, value]) => (
                     <FieldRow
                       key={key}
+                      entityIndex={entityIdx}
                       fieldName={key}
                       value={value}
+                      verdict={
+                        doc.latest_prediction?.per_field_confidence?.[
+                          String(entityIdx)
+                        ]?.[key]
+                      }
+                      evidenceMap={doc.latest_prediction?.per_field_evidence ?? null}
                       onChange={(v) => updateField(entityIdx, key, v)}
                     />
                   ))}
@@ -147,14 +162,21 @@ export function StudioPage() {
 }
 
 function FieldRow({
+  entityIndex,
   fieldName,
   value,
+  verdict,
+  evidenceMap,
   onChange,
 }: {
+  entityIndex: number;
   fieldName: string;
   value: unknown;
+  verdict: ConfidenceVerdict | null | undefined;
+  evidenceMap: PerFieldEvidence | null | undefined;
   onChange: (next: string) => void;
 }) {
+  const labelId = useId();
   const display =
     value === null || value === undefined
       ? ""
@@ -163,12 +185,23 @@ function FieldRow({
         : JSON.stringify(value);
 
   return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="font-mono text-xs text-fg-muted">{fieldName}</span>
+    <div className="flex flex-col gap-1 text-sm">
+      <div className="flex items-center gap-2">
+        <span id={labelId} className="font-mono text-xs text-fg-muted">
+          {fieldName}
+        </span>
+        <ConfidenceChip verdict={verdict} />
+        <FieldEvidencePopover
+          entityIndex={entityIndex}
+          fieldName={fieldName}
+          evidenceMap={evidenceMap}
+        />
+      </div>
       <Input
+        aria-labelledby={labelId}
         value={display}
         onChange={(e) => onChange(e.target.value)}
       />
-    </label>
+    </div>
   );
 }

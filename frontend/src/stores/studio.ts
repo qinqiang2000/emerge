@@ -1,6 +1,10 @@
 import { create } from "zustand";
 
 import { api, emergeErrorKey } from "@/lib/api";
+import type {
+  PerFieldConfidence,
+  PerFieldEvidence,
+} from "@/types/studio";
 
 export type EntityOutput = Record<string, unknown>;
 
@@ -11,6 +15,8 @@ export type LatestPrediction = {
   model_id: string;
   tokens_used: number | null;
   error_message: string | null;
+  per_field_confidence?: PerFieldConfidence | null;
+  per_field_evidence?: PerFieldEvidence | null;
 };
 
 export type LatestAnnotation = {

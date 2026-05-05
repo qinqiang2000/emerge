@@ -112,7 +112,17 @@
     "no_entities": "No entities extracted yet.",
     "entity_label": "Entity",
     "preview_placeholder_title": "Document preview",
-    "preview_placeholder_hint": "Real PDF preview lands in v1.1; for now use the entity editor on the right."
+    "preview_placeholder_hint": "Real PDF preview lands in v1.1; for now use the entity editor on the right.",
+    "evidence": {
+      "show_button_aria": "Show evidence",
+      "popover_title": "Evidence",
+      "page_label": "Page {{page}}",
+      "rationale_label": "Rationale"
+    },
+    "confidence": {
+      "uncertain": "Uncertain",
+      "needs_review": "Needs review"
+    }
   },
   "schema": {
     "title": "Schema",
