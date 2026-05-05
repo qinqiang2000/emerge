@@ -1,7 +1,7 @@
 # R8 continuation handoff — R8.4 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.7 hygiene-tail closure: judge-provider wiring + vibe-check lifecycle fix)
+Last refreshed: 2026-05-05 (post R8.7 smoke-finding sweep: spot-check semantic + Draft callout + panel auto-refresh)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -28,11 +28,11 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state (2026-05-05 refresh, post R8.7 hygiene-tail closure)
+## 1. Current live state (2026-05-05 refresh, post smoke-finding sweep)
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    8a317e4 test(frontend): re-enable /judge POST in walking-skeleton
+HEAD:    137dd3f fix(frontend): panels auto-refresh after document mutations
 status:  clean
 ```
 
@@ -84,9 +84,23 @@ Live run validated end-to-end against running `uv run uvicorn app.main:app --rel
 
 Real Gemini Pro behavior in the receipt smoke: judges parking-receipt `shop_name` as `down` consistently across 8 entities, `issue_date` and `total_amount` as `up`. The risky_fields and required_review surfaces are now genuinely populated end-to-end.
 
+**Manual browser smoke of the new vibe-check lifecycle (chrome-devtools-mcp on project 10) surfaced three follow-on UX findings, all resolved in this session:**
+
+- **Smoke #3 → `b950277`** (gap surfaced by #51, not introduced): docs without `per_field_confidence` were landing in `Spot-check` ("AI says fine, verify") even though the judge had never said anything. Three-line backend change in `get_review_queue`: only docs with non-empty per_field_confidence enter `up_only` (and therefore can be sampled into `spot_check`). New backend test pins the behavior.
+- **Smoke #1 → `d4182cd`** (#51 follow-on UX): a user who saved a correction in Draft mode then opened `/review` saw the doc still there with no on-page explanation — natural "didn't I just fix that?" confusion. Backend: `ReviewQueueOut` now carries `schema_locked: bool` derived from the same `vibe_check_includes_corrected` helper (single source of truth, no second round trip). Frontend: `ReviewInboxPage` renders a one-line callout above the three sections when `!schema_locked`: *"Schema is in Draft — corrected documents stay here so you can revisit them. Lock the schema when you're done iterating; corrected docs leave the queue at that point."* Two new component tests pin show/hide.
+- **Smoke #2 → `137dd3f`** (pre-existing, not #51-introduced): `ReadinessPanel` + `ReviewInboxBanner` showed stale state after upload/extract/save-correction — user had to reload the page to see updated counts. Pragmatic fix: `documents.ts` and `studio.ts` fire `useReadiness.load(projectId) + useReview.load(projectId)` after each mutation. Fire-and-forget so a transient panel-fetch failure can't block the mutation. Two new component tests pin the wiring.
+
+After all three fixes, the iteration loop reads coherently in the browser: upload → extract → see panels update live → open Studio → edit → save → see panels update live + see the doc still in `/review` with a clear explanation of why → lock schema → callout disappears + corrected doc exits the pool. Spec §4.1 wording (committed in `6cf7686`) and observed behavior match.
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+137dd3f fix(frontend): panels auto-refresh after document mutations
+d4182cd feat(frontend): Draft-mode callout explains why corrected docs stay in /review
+b950277 fix(api): spot-check requires actual judge verdicts
+6cf7686 docs(spec): vibe-check pool definition is lifecycle-aware
+6e5e51d docs(handoff): drop orphan duplicate Historical header
+6dcf006 docs(handoff): refresh after R8.7 hygiene-tail closure (#50 + #51)
 8a317e4 test(frontend): re-enable /judge POST in walking-skeleton
 60f136d refactor(test): hoist _FakeSettings above its callers
 fa72157 feat(api): wire production GeminiJudgeProvider for /judge
@@ -145,10 +159,11 @@ b813e6f docs: add R8 productization MVP overlay plan
 
 ```text
 cd frontend && npm run lint                : clean
-cd frontend && npm test                    : 19 files / 137 tests passed
+cd frontend && npm test                    : 19 files / 141 tests passed
 cd frontend && npm run build               : 455 KB / 141 KB gzipped
 cd frontend && EMERGE_E2E=1 npx playwright test walking_skeleton : 1 passed (21.2s, warm Gemini)
-cd backend  && uv run pytest -q            : 252 passed, 2 skipped, 4 warnings (post-hygiene closure: +3 vibe-check helper, +1 route-level lock flip, +8 GeminiJudgeProvider unit tests)
+cd frontend && npm test                    : 141 passed (was 137; +2 review-callout, +1 doc-list auto-refresh, +1 studio auto-refresh)
+cd backend  && uv run pytest -q            : 253 passed, 2 skipped, 4 warnings (post-hygiene closure + smoke sweep: +3 vibe-check helper, +1 route-level lock flip, +8 GeminiJudgeProvider, +1 spot-check semantic)
 ```
 
 ### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4 + R8.7 automated)
@@ -342,9 +357,14 @@ Prompt 7 (DONE)  => R8.6 Partial Feedback UI: builder + API Console form
 Prompt 8 (DONE)  => R8.7 Walking Skeleton E2E (151e2de) + hygiene-tail
                     closure: gap #51 vibe-check lifecycle (9659493 +
                     f0b51e4), gap #50 GeminiJudgeProvider (fa72157 +
-                    60f136d), /judge re-enabled in spec (8a317e4).
-NEXT             => §13 P0 Release hardening / dogfood. Both R8.7
-                    backend gaps closed; R8 MVP exit-gate satisfied.
+                    60f136d), /judge re-enabled in spec (8a317e4),
+                    spec §4.1 update (6cf7686), smoke sweep
+                    (b950277 spot-check + d4182cd Draft callout +
+                    137dd3f panel auto-refresh).
+NEXT             => §13 P0 Release hardening / dogfood. R8 MVP
+                    exit-gate satisfied. Iteration loop reads coherently
+                    end-to-end in the browser (verified via chrome-
+                    devtools-mcp on project 10).
 ```
 
 §5–§7 below preserve the historical R8.1 / R8.2 / R8.3 prompts as reference for the patterns those phases established; new sessions don't need to re-implement them. Skip directly to §8 (R8.4) when starting fresh.
