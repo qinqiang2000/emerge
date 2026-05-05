@@ -70,7 +70,7 @@ echo "  log dir: ${LOG_DIR#${ROOT}/}/"
 echo
 
 run_step "frontend-lint"   "${ROOT}/frontend" "npm run lint"
-run_step "frontend-test"   "${ROOT}/frontend" "npm test --silent"
+run_step "frontend-test"   "${ROOT}/frontend" "npm test"
 run_step "frontend-build"  "${ROOT}/frontend" "npm run build"
 run_step "backend-pytest"  "${ROOT}/backend"  "uv run pytest -q"
 

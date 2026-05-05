@@ -21,8 +21,10 @@ This doc never prints, requests, or assumes any real secret value:
 
 - macOS or Linux, Python 3.11+, Node 20+, `uv` installed (`brew install uv`).
 - A provider key: either `GOOGLE_API_KEY` (Gemini) or `OPENAI_API_KEY`. The
-  defaults assume Gemini (`gemini-2.0-flash` for runtime extraction,
-  `gemini-3.1-pro-preview` for the AutoResearch / judge path).
+  defaults assume Gemini; runtime extraction and the AutoResearch / judge
+  path use whatever `default_model_gemini` and `default_model_pro` are set
+  to in `backend/app/settings.py` (separate tiers per the model-tier-split
+  memory note in `CLAUDE.md`).
 - If your network needs an outbound proxy for the provider, export
   `https_proxy` / `http_proxy` in the shell that runs the backend (the spec
   found `httpx.ConnectError` failures silent in the DB without proxy env).
@@ -177,14 +179,17 @@ Open <http://localhost:5173> → you should land on `/login`.
 - **All** — every doc currently in the vibe-check pool.
 
 Until the judge runs, all three are empty (after lock — see §3 above for
-why uncorrected docs stay in the pool). Trigger one judge run:
+why uncorrected docs stay in the pool). Trigger one judge run from the
+terminal:
+
+1. In the browser, DevTools → Console → run
+   `copy(localStorage.getItem("emerge.token"))` (puts the JWT on the
+   clipboard without printing it).
+2. Paste it into a shell variable, then curl. Do **not** commit `JWT` to
+   any file.
 
 ```bash
-JWT="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/dev/stdin"))["emerge.token"])' < /dev/null)"
-# Or just open the browser DevTools console and run:
-#   localStorage.getItem("emerge.token")
-# Paste the value into JWT here. Do NOT commit it.
-
+JWT=...   # paste from clipboard
 curl -X POST http://localhost:8000/api/v1/projects/<project_id>/judge \
   -H "Authorization: Bearer ${JWT}"
 ```
