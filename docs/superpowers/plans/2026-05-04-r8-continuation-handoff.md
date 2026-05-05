@@ -1,7 +1,7 @@
-# R8 continuation handoff — R8.3 onward
+# R8 continuation handoff — R8.4 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.3 readiness panel + manual smoke + hygiene 8/17 resolved)
+Last refreshed: 2026-05-05 (post R8.4 review inbox + chrome-devtools smoke + hygiene 22 resolved)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -28,11 +28,11 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state (2026-05-05 refresh)
+## 1. Current live state (2026-05-05 refresh, post R8.4)
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    dd846d2 docs(hygiene): track R8.3 smoke finding (44) on quality CI with no obs
+HEAD:    8339780 docs(hygiene): track R8.4 smoke findings (45, 46) on banner copy
 status:  clean
 ```
 
@@ -50,9 +50,14 @@ R8 commits remain on `r8-productization-mvp`, not in local or remote `main`. Con
 
 **R8.3 — API Readiness Panel**: `useReadiness` Zustand store, `ReadinessPanel` component, `types/readiness.ts` mirror, full `errors.readiness.*` i18n catalog (9 backend slugs). Panel mounts at the top of `/projects/:id` (above Document table) AND inside `/projects/:id/api-console` (above Production pointer). Hard rules verified: `counterexamples_total === 0` → "No production feedback yet" (never `100%`); quality always shows CI band + (N obs · vibe-check K); risky fields top-5 with `+N more`; raw slugs never reach the user; unknown slugs fall back to humanised + `console.warn`. Plus follow-up commit `88b9836` after gate review: distinct copy per `regression_health.status`, null-safe `passing` approximation, cross-project race fix in `useReadiness.load()`, dropped redundant `KNOWN_*` whitelists. Plus hygiene sweeps in the same commit: (8) drop manual `Content-Type: multipart/form-data` from upload (axios sets the boundary); (17) lift `emergeCode`/`emergeErrorKey` helpers from 6 stores to `lib/api.ts`. Pushed back on reviewer suggestion to surface backend `schema_maturity.message` (English-only static copy that conflicts with the i18n red line; the translated `readiness.maturity.<status>` catalog already conveys the recommended action).
 
+**R8.4 — Review Inbox**: `useReview` Zustand store, `ReviewInboxBanner` component (mounts on `/projects/:id` BETWEEN ReadinessPanel and Document table), `ReviewInboxPage` at `/projects/:id/review` (three sections — Required review / Spot-check / All — backed by the same store). Banner shows three counts (required_review · spot_check · all). "Review next" routes to first `required_review[0]`, falling back to first `spot_check[0]`; both buckets empty → button disabled and "All caught up" callout (never "0 of 0"). Each row in the dedicated page shows filename + flagged_fields chips (backend caps at 3) and routes to Studio. `types/review.ts` mirrors backend `ReviewQueueOut`/`ReviewItemOut`. `review.*` i18n namespace covers banner copy, section titles + hints, and per-section empty-state. Hygiene swept in the same commit: (22) `ProjectSubNav` migrated from `pathname.endsWith` (trailing-slash fragile) to `useMatch` pattern matching, plus a new "Review" sub-nav tab between Documents and Schema. Gate review: ready-to-merge, no Critical/Important findings; minor polish items only (banner `<dl>` separator markup, list `role="button"` could nest a `<button>`, plural copy). Smoke logged hygiene (45/46): banner "0 docs total" doesn't qualify the vibe-check semantics that the dedicated page hint already spells out; "1 need review" should pluralise to "1 needs review".
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+8339780 docs(hygiene): track R8.4 smoke findings (45, 46) on banner copy
+6df78f8 feat(frontend): Review Inbox banner and page from /review-queue
+dc25193 docs(handoff): refresh after R8.3 readiness panel + smoke + hygiene 8/17
 dd846d2 docs(hygiene): track R8.3 smoke finding (44) on quality CI with no obs
 88b9836 fix(frontend): apply R8.3 gate-review fixes to ReadinessPanel
 a20a42e feat(frontend): API Readiness panel with CI band and no-feedback semantics
@@ -88,28 +93,29 @@ b813e6f docs: add R8 productization MVP overlay plan
 
 ```text
 cd frontend && npm run lint                : clean
-cd frontend && npm test                    : 14 files / 69 tests passed
-cd frontend && npm run build               : 432 KB / 136 KB gzipped
+cd frontend && npm test                    : 15 files / 83 tests passed
+cd frontend && npm run build               : 438 KB / 137 KB gzipped
 cd backend  && uv run pytest -q            : 237 passed, 2 skipped, 4 warnings
 ```
 
-### Manual smoke completed (R8.1 + R8.2 + R8.3)
+### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4)
 
 A real walking-path smoke ran against `dogfood@example.com` on project test1 (built from `japan_receipt` builtin, 2 Japanese parking-receipt PDFs uploaded + extracted with Gemini):
 
 - R8.1: register → create → upload → extract → Studio edit + save → reload (override visible) → Schema lock + unlock. Found auth race + Pages-column-always-0 bug; both fixed in `80458c8`/`82be98d`.
 - R8.2: lock → API tab → Activate → Create key (modal plaintext + Esc-blocked + ack-gated dismiss) → reload (prefix-only) → Rename → Unpublish → curl `/extract/japan-receipts-v2` → 403 → Re-publish → Revoke. Found timezone drift + `api_published_at` re-stamp on rename; both fixed in `e7edcdf`/`d0d53ca`.
 - R8.3 (chrome-devtools-mcp driven): fresh empty project (`r83-smoke-empty`, project 3) → all 3 publish_blockers translated, no raw slugs, no `100%`, regression reads "No production feedback yet"; published `test1` (project 2) → blockers section disappears, schema reads "Locked"; light + dark theme renders both panels cleanly. Found one new UX hygiene item (44): quality reads ~80% ± 23% with 0 obs because of Beta prior — backend should surface null on `observation_count === 0`. Non-blocking; tracked in hygiene tail §3.
+- R8.4 (chrome-devtools-mcp driven, project 2 published `test1`): banner mounts BETWEEN `API Readiness` and `Documents` h1 (correct vertical position); three counts read `0 need review · 0 spot-checks · 0 docs total`; "Review next" disabled; "All caught up" callout renders. `/projects/2/review` shows three sections with hints + per-section empty copy. Sub-nav order is `Documents · Review · Schema · API`; `aria-current="page"` lands on Review when on `/review`, on Documents when on `/projects/:id`. Dark theme clean; only console output is the pre-existing React Router future-flag warnings. Found two non-blocking hygiene items (45, 46): banner "0 docs total" doesn't qualify the vibe-check semantics that the dedicated page hint already spells out; pluralisation "1 need review" should be "1 needs review". Tracked in hygiene tail §3a.
 
 Open UX findings from those smokes are tracked in the hygiene tail. See §13 below for the full carry-forward.
 
 ---
 
-## 2. R8.4 entry point — read this then dive in
+## 2. R8.5 entry point — read this then dive in
 
-Authoritative R8.4 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.4 — Review Inbox** (around lines 540–601).
+Authoritative R8.5 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.5 — Field Evidence display in Studio** (around lines 604–714).
 
-R8.4 in one paragraph: surface `GET /api/v1/projects/{pid}/review-queue` as a banner on `/projects/:id` (between the R8.3 ReadinessPanel and the Document table) and as a dedicated `/projects/:id/review` page. Banner shows three counts (required_review · spot_check · all) and a "Review next" button that opens the first item in `required_review` (or first `spot_check` if required is empty). Empty queue reads "All caught up", never "0 of 0". Dedicated page renders three sections (Required review / Spot-check / All) backed by the same store. Each row shows filename + flagged_fields (already capped at 3 by backend).
+R8.5 in one paragraph: wire `latest_prediction.per_field_evidence` and `per_field_confidence` into Studio so each field row exposes a per-field Evidence popover (page / quote / rationale, no bbox) and a confidence chip (`up` silent, `uncertain` muted, `down` warning). Two parts: **R8.5.0** is a tiny backend payload extension — the existing `GET /api/v1/projects/{pid}/documents/{did}` route omits both fields and needs them surfaced under `latest_prediction`; add a backend test that asserts the keys are present and that no bbox / coordinate / region keys leak. **R8.5.1** is the frontend popover + chip wired into Studio per-field rows. Field-level evidence is the spec §8.2 trust surface; the popover button is hidden when no evidence exists, never renders coordinate keys even if backend leaks them, and emits `console.warn` on unknown keys in dev.
 
 Suggested Claude Code prompt for the next session:
 
@@ -120,53 +126,89 @@ Continue R8 Productization MVP on branch r8-productization-mvp at
 Pre-read in order before any work:
 1. CLAUDE.md
 2. docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md
-3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.4
+3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.5 (R8.5.0 backend, R8.5.1 frontend)
 4. docs/superpowers/plans/2026-05-04-r8-hygiene-tail.md
-5. docs/superpowers/specs/2026-05-02-overall-design.md §8.1 (review queue)
+5. docs/superpowers/specs/2026-05-02-overall-design.md §3.2 (per_field_evidence shape) and §8.2 (Studio evidence popover)
 
 Verify health at HEAD before starting:
 - cd frontend && npm run lint && npm test && npm run build
 - cd backend  && uv run pytest -q
 
-Then implement only Phase R8.4 (Review Inbox) per the overlay, one commit.
-Conventions established in R8.1 / R8.2 / R8.3:
+Then implement Phase R8.5 per the overlay, in two commits:
+
+R8.5.0 — backend: surface `per_field_evidence` and `per_field_confidence`
+under `latest_prediction` in `GET /api/v1/projects/{pid}/documents/{did}`
+(see backend/app/api/routes/documents.py:89-99 dict literal). Add a new
+backend test `tests/test_document_detail_evidence.py` that creates a
+Prediction with both maps and asserts the keys land in the payload AND
+that no `bbox`/`region`/`coordinates` keys leak. Commit message:
+  feat(api): surface per-field evidence and confidence in document detail
+
+R8.5.1 — frontend:
+  - Extend `frontend/src/types/studio.ts` (or stores/studio.ts types)
+    with `FieldEvidence` and the `per_field_*` maps.
+  - Create `frontend/src/components/FieldEvidencePopover.tsx`:
+    button hidden when no evidence; popover renders only `page`,
+    `quote`, `rationale` (and `source_text_hash` if surfaced). Drops
+    unknown keys client-side and console.warn in dev. NEVER renders
+    bbox / region / coordinates keys, even if backend leaks them.
+  - Create `<ConfidenceChip verdict>` for `up | uncertain | down`:
+    `up` silent, `uncertain` muted, `down` status-warning.
+  - Wire both into `frontend/src/pages/Studio.tsx` per-field rows.
+  - Mirror `studio.evidence.*` strings in `en.json`.
+  - TDD: write `frontend/src/__tests__/field_evidence_popover.test.tsx`
+    first; cover the happy path, the rationale-only path, the
+    no-evidence path, the bbox-leak defense, and the three chip
+    verdicts. Watch RED → implement → GREEN.
+
+Conventions established in R8.1–R8.4 (carry through):
 - TDD: spec test first, watch RED, implement, watch GREEN
 - useT() for every visible string; semantic Tailwind tokens only
-- EmergeError → errors.<code> i18n; Zustand store with data/rows /
-  loading / error using emergeErrorKey from lib/api (lifted in R8.3)
-- After each commit, dispatch a code-reviewer via the
-  superpowers:requesting-code-review skill (NOT a bare general-purpose
-  agent — last time the bare agent missed 5 Important issues that the
-  proper skill template caught). Standing instruction; see memory
-  feedback_gate_review_subagent.md.
+- EmergeError → errors.<code> i18n; Zustand store with
+  data / loading / error using emergeErrorKey from lib/api
+- After EACH commit (R8.5.0 backend AND R8.5.1 frontend), dispatch a
+  code-reviewer via superpowers:requesting-code-review skill (NOT a
+  bare general-purpose agent — see memory
+  feedback_gate_review_subagent.md).
 - When you touch a file, sweep matching items from the hygiene tail in
   the same commit. Mirror every visible string into en.json.
+- After both commits, refresh the handoff doc and STOP for human
+  checkpoint before R8.6.
 
-R8.4 hard rules (CLAUDE.md + spec §8.1):
-- ReviewInboxBanner mounts on /projects/:id BETWEEN the ReadinessPanel
-  (R8.3, top of page) and the Document table.
-- Banner shows three counts: required_review · spot_check · all.
-- "Review next" opens first required_review item, falling back to first
-  spot_check if required is empty.
-- When both required_review and spot_check are empty, button is disabled
-  and copy reads "All caught up" (NEVER "0 of 0").
-- Dedicated /projects/:id/review page renders three sections (Required
-  review / Spot-check / All), each row showing filename + flagged_fields
-  (backend already caps flagged_fields at 3).
-- Same store backs both surfaces (banner + page).
+R8.5 hard rules (CLAUDE.md + spec §3.2 / §8.2):
+- Field-level evidence is page + quote + rationale text only.
+  No bbox, coordinates, regions, polygons, spans, or visual overlays.
+  No way to draw on the document.
+- Popover button is hidden when no evidence exists for the field.
+- Confidence chip: `up` renders nothing, `uncertain` renders muted
+  chip, `down` renders status-warning chip.
+- The popover defends against bbox-key leakage from backend by
+  ignoring unknown keys and console.warn in dev.
+- Backend payload only adds keys; do not change `DocumentDetailOut`
+  shape semantics or break existing tests.
 
-Out of scope: AutoResearch viewer, Field Evidence (R8.5), Partial
-Feedback (R8.6), MatchingProject, VerificationProject, bbox/coordinate
-UI, real PDF preview. Never read or print secrets.
+Out of scope: Partial Feedback (R8.6), Walking Skeleton E2E (R8.7),
+AutoResearch viewer, MatchingProject, VerificationProject,
+real PDF preview, Studio entity nav / collapse, "Report wrong" dialog
+(that lands in R8.6 next to the evidence popover). Never read or
+print secrets.
 
-R8.3 context the new session should know:
-- ReadinessPanel mounts at top of /projects/:id and inside
-  /projects/:id/api-console.
+R8.4 context the new session should know:
+- ReviewInboxBanner mounts on /projects/:id between ReadinessPanel
+  and the Document table; dedicated /projects/:id/review page lives
+  at the new "Review" sub-nav tab.
+- ProjectSubNav uses useMatch (pattern-based, trailing-slash safe).
 - emergeCode + emergeErrorKey helpers live in lib/api.ts (use them).
-- Manual smoke verified R8.3 on dogfood@example.com / Pass1234! against
-  fresh empty project + published `test1`; light + dark both clean.
-- Hygiene tail item (44): quality % renders ~80% ± 23% on 0 obs due to
-  Beta prior; flagged for next backend touch (R8.5 territory).
+- chrome-devtools-mcp smoke against project 2 (test1) verified R8.4
+  in light + dark; no console errors beyond pre-existing react-router
+  future-flag warnings.
+- Hygiene tail item (44): quality % renders ~80% ± 23% on 0 obs due
+  to Beta prior — backend should surface null on
+  `observation_count === 0`. R8.5 backend payload work is the natural
+  place to also fix (44); if you do, sweep it in the R8.5.0 commit.
+- Hygiene (45): banner "0 docs total" needs vibe-check qualifier
+  copy; (46) plural "1 needs review" — both deferred, sweep when
+  the affected file is next touched.
 ```
 
 ---
@@ -197,8 +239,8 @@ Prompt 2 (DONE)  => R8.1 Product shell + sub-nav + auth boot-prime + Pages drop
 Prompt 3 (DONE)  => R8.2 API Console + publish flow + one-time API key reveal
                     + backend tz / api_published_at fixes
 Prompt 4 (DONE)  => R8.3 API Readiness Panel + gate-review fixes + hygiene 8/17
-Prompt 5 (NEXT)  => R8.4 Review Inbox
-Prompt 6         => R8.5 Field Evidence display in Studio (incl small backend payload gap)
+Prompt 5 (DONE)  => R8.4 Review Inbox + sub-nav useMatch + hygiene 22
+Prompt 6 (NEXT)  => R8.5 Field Evidence display in Studio (incl small backend payload gap)
 Prompt 7         => R8.6 Partial Feedback UI, public shape + in-Lab reuse
 Prompt 8         => R8.7 Walking Skeleton E2E
 ```
