@@ -37,3 +37,6 @@ backend/data/
 backend/uploads/
 backend/.coverage
 htmlcov/
+
+# Release checklist per-step logs (./scripts/release-checklist.sh)
+.release-checklist-logs/
