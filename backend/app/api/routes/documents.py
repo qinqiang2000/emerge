@@ -94,6 +94,13 @@ async def get_document(
             "model_id": latest.model_id,
             "tokens_used": latest.tokens_used,
             "error_message": latest.error_message,
+            # Spec §3.2 / §8.2: surface field-level evidence + confidence so
+            # Studio can render the popover and chip without a second roundtrip.
+            # Evidence shape is page/quote/rationale/source_text_hash only — no
+            # bbox / coordinates / polygon / region / span. Engine strips
+            # forbidden keys on write (see test_field_evidence.py).
+            "per_field_confidence": latest.per_field_confidence,
+            "per_field_evidence": latest.per_field_evidence,
         }
         if latest
         else None
