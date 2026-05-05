@@ -1,7 +1,7 @@
 # R8 continuation handoff — R8.4 onward
 
 Generated: 2026-05-04 20:43 CST
-Last refreshed: 2026-05-05 (post R8.4 review inbox + chrome-devtools smoke + hygiene 22 resolved)
+Last refreshed: 2026-05-05 (post R8.5 evidence popover + chip + gate-review polish)
 Repo: `/Users/qinqiang02/colab/codespace/ai/emerge`
 Branch to continue on: `r8-productization-mvp`
 
@@ -28,11 +28,11 @@ Do **not** read, print, copy, or commit `backend/.env`, provider keys, JWTs, API
 
 ---
 
-## 1. Current live state (2026-05-05 refresh, post R8.4)
+## 1. Current live state (2026-05-05 refresh, post R8.5)
 
 ```text
 branch:  r8-productization-mvp
-HEAD:    8339780 docs(hygiene): track R8.4 smoke findings (45, 46) on banner copy
+HEAD:    bd43798 test(frontend): cover popover dismissal paths and clarify allow-list intent
 status:  clean
 ```
 
@@ -52,9 +52,20 @@ R8 commits remain on `r8-productization-mvp`, not in local or remote `main`. Con
 
 **R8.4 — Review Inbox**: `useReview` Zustand store, `ReviewInboxBanner` component (mounts on `/projects/:id` BETWEEN ReadinessPanel and Document table), `ReviewInboxPage` at `/projects/:id/review` (three sections — Required review / Spot-check / All — backed by the same store). Banner shows three counts (required_review · spot_check · all). "Review next" routes to first `required_review[0]`, falling back to first `spot_check[0]`; both buckets empty → button disabled and "All caught up" callout (never "0 of 0"). Each row in the dedicated page shows filename + flagged_fields chips (backend caps at 3) and routes to Studio. `types/review.ts` mirrors backend `ReviewQueueOut`/`ReviewItemOut`. `review.*` i18n namespace covers banner copy, section titles + hints, and per-section empty-state. Hygiene swept in the same commit: (22) `ProjectSubNav` migrated from `pathname.endsWith` (trailing-slash fragile) to `useMatch` pattern matching, plus a new "Review" sub-nav tab between Documents and Schema. Gate review: ready-to-merge, no Critical/Important findings; minor polish items only (banner `<dl>` separator markup, list `role="button"` could nest a `<button>`, plural copy). Smoke logged hygiene (45/46): banner "0 docs total" doesn't qualify the vibe-check semantics that the dedicated page hint already spells out; "1 need review" should pluralise to "1 needs review".
 
+**R8.5 — Field Evidence display**: split into two commits per overlay.
+- **R8.5.0 backend** (`1195259`): extended `latest_prediction` payload in `backend/app/api/routes/documents.py` with `per_field_evidence` and `per_field_confidence` (5-line dict-literal addition; reads existing nullable JSON columns; no schema change). New test file `backend/tests/test_document_detail_evidence.py` pins the happy path, the read-side pass-through for sanitised evidence, and a third null-handling case asserting both keys are *present* (not just truthy) so the frontend can read them without `in`-guarding. Gate review feedback applied in `3c1428b`: renamed the leak-defense test to `test_document_detail_passes_through_sanitized_evidence_unchanged` (the original framing was tautological because clean seed data trivially passes a "no forbidden keys" probe), replaced `repr(body)` substring search with a recursive key-walk to avoid false positives on legitimate values, and pointed the production comment at `app/engine/extract.py::_sanitize_evidence` (the actual write-time defense boundary) instead of a sibling test file. 240 backend tests pass (was 237).
+- **R8.5.1 frontend** (`1a5a3e9`): new `frontend/src/types/studio.ts` with `FieldEvidence`, `PerFieldEvidence`, `PerFieldConfidence`, `ConfidenceVerdict`, plus `EVIDENCE_ALLOWED_KEYS` runtime allow-list (single source of truth for the runtime sanitiser AND the type). New `FieldEvidencePopover` and `ConfidenceChip` components. Popover trigger only renders when at least one allow-listed key exists for `(entityIndex, fieldName)`; when backend leaks bbox/coordinates/polygon/region/span keys, `pickAllowedKeys` drops them, `console.warn`s, and the popover never renders coordinate values to the DOM (allow-list, not deny-list). Click-outside (mousedown), Escape, and trigger toggle all dismiss the panel. ConfidenceChip is silent on `up`, muted (`bg-bg-muted`) on `uncertain`, and warning-bordered/colored on `down`. Wired into `Studio.tsx` per-field rows, which required restructuring the wrapping `<label>` into a `useId()`-backed `aria-labelledby` pattern (popover `<button>` cannot be nested in a `<label>` that also wraps the input — clicking the button would steal focus). `studio.evidence.*` and `studio.confidence.*` i18n namespaces. 14 component tests including three close-behavior cases added in `bd43798` after gate review.
+
+R8.5 gate review (subagent): both commits ready-to-merge with no Critical/Important findings. Backend reviewer's only Important note (tautological leak-defense test) was applied as `3c1428b`. Frontend reviewer's only Minor that warranted action (no close-behavior tests) was applied as `bd43798`. Other minor notes were either (a) cosmetic dead branches in ConfidenceChip's silent path that defensive-code as designed, (b) `console.warn` unconditionality matching existing `ReadinessPanel` precedent, or (c) premature DRY suggestions to be revisited when R8.6 needs the same sanitiser.
+
 ### Reverse-chronological commit list (this branch)
 
 ```text
+bd43798 test(frontend): cover popover dismissal paths and clarify allow-list intent
+1a5a3e9 feat(frontend): Studio per-field evidence popover and confidence chip
+3c1428b test(api): rename evidence pass-through test and use real key-walk
+1195259 feat(api): surface per-field evidence and confidence in document detail
+ca670f9 docs(handoff): refresh after R8.4 review inbox + smoke + hygiene 22 resolved
 8339780 docs(hygiene): track R8.4 smoke findings (45, 46) on banner copy
 6df78f8 feat(frontend): Review Inbox banner and page from /review-queue
 dc25193 docs(handoff): refresh after R8.3 readiness panel + smoke + hygiene 8/17
@@ -93,12 +104,15 @@ b813e6f docs: add R8 productization MVP overlay plan
 
 ```text
 cd frontend && npm run lint                : clean
-cd frontend && npm test                    : 15 files / 83 tests passed
-cd frontend && npm run build               : 438 KB / 137 KB gzipped
-cd backend  && uv run pytest -q            : 237 passed, 2 skipped, 4 warnings
+cd frontend && npm test                    : 16 files / 97 tests passed
+cd frontend && npm run build               : 442 KB / 138 KB gzipped
+cd backend  && uv run pytest -q            : 240 passed, 2 skipped, 4 warnings
 ```
 
 ### Manual smoke completed (R8.1 + R8.2 + R8.3 + R8.4)
+
+Note for R8.5: no in-browser smoke yet. Token-only styling guarantees light + dark theme correctness mechanically (see frontend reviewer's verdict), and the 14 component tests cover the popover and chip behaviorally. A real smoke (chrome-devtools-mcp against project 2 / `test1` with a Prediction that has evidence + a non-`up` verdict) is the right gate before R8.6 touches the same FieldRow surface — recommended as the first thing the next session does after pre-read.
+
 
 A real walking-path smoke ran against `dogfood@example.com` on project test1 (built from `japan_receipt` builtin, 2 Japanese parking-receipt PDFs uploaded + extracted with Gemini):
 
@@ -111,11 +125,11 @@ Open UX findings from those smokes are tracked in the hygiene tail. See §13 bel
 
 ---
 
-## 2. R8.5 entry point — read this then dive in
+## 2. R8.6 entry point — read this then dive in
 
-Authoritative R8.5 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.5 — Field Evidence display in Studio** (around lines 604–714).
+Authoritative R8.6 detail: `docs/superpowers/plans/2026-05-04-r8-productization-mvp.md`, section **Phase R8.6 — Partial Feedback UI** (around lines 717–875).
 
-R8.5 in one paragraph: wire `latest_prediction.per_field_evidence` and `per_field_confidence` into Studio so each field row exposes a per-field Evidence popover (page / quote / rationale, no bbox) and a confidence chip (`up` silent, `uncertain` muted, `down` warning). Two parts: **R8.5.0** is a tiny backend payload extension — the existing `GET /api/v1/projects/{pid}/documents/{did}` route omits both fields and needs them surfaced under `latest_prediction`; add a backend test that asserts the keys are present and that no bbox / coordinate / region keys leak. **R8.5.1** is the frontend popover + chip wired into Studio per-field rows. Field-level evidence is the spec §8.2 trust surface; the popover button is hidden when no evidence exists, never renders coordinate keys even if backend leaks them, and emits `console.warn` on unknown keys in dev.
+R8.6 in one paragraph: expose the public partial-feedback payload shape (`{ request_id, corrections: [{entity_index, field_path, correct_value, comment?}], issue_type?, notes? }`) in two surfaces, both backed by the existing backend contract — no new endpoints. (A) **API Console**: a read-only example panel showing the payload + a curl snippet using the `EMERGE_API_KEY` placeholder; an interactive "Send test feedback" form gated on at least one API key existing, with a transient (component-state-only, never-persisted) plaintext-key field that calls `POST /extract/{api_code}/feedback` with `X-Api-Key`. (B) **Studio**: a `Report wrong field` dialog that lives next to the new R8.5 evidence popover button. The dialog displays the same JSON shape (read-only) so users see the contract, but in Lab it submits a regular `POST /annotations` (Lab has no API key and posting through the public endpoint would defeat UX). Three commits per overlay; full TDD on each.
 
 Suggested Claude Code prompt for the next session:
 
@@ -126,89 +140,114 @@ Continue R8 Productization MVP on branch r8-productization-mvp at
 Pre-read in order before any work:
 1. CLAUDE.md
 2. docs/superpowers/plans/2026-05-04-r8-continuation-handoff.md
-3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.5 (R8.5.0 backend, R8.5.1 frontend)
+3. docs/superpowers/plans/2026-05-04-r8-productization-mvp.md (overlay) — Phase R8.6 (R8.6.a builder, R8.6.b API Console form, R8.6.c Studio dialog)
 4. docs/superpowers/plans/2026-05-04-r8-hygiene-tail.md
-5. docs/superpowers/specs/2026-05-02-overall-design.md §3.2 (per_field_evidence shape) and §8.2 (Studio evidence popover)
+5. docs/superpowers/specs/2026-05-02-overall-design.md §1, §2.4, §11 (counterexample / feedback semantics)
+6. backend/app/schemas/annotation.py (FeedbackIn shape, the five issue_type literals)
+7. backend/app/services/corrections.py (apply_feedback_corrections — dotted field-path conventions)
 
 Verify health at HEAD before starting:
 - cd frontend && npm run lint && npm test && npm run build
 - cd backend  && uv run pytest -q
 
-Then implement Phase R8.5 per the overlay, in two commits:
+Then implement Phase R8.6 per the overlay, in three commits:
 
-R8.5.0 — backend: surface `per_field_evidence` and `per_field_confidence`
-under `latest_prediction` in `GET /api/v1/projects/{pid}/documents/{did}`
-(see backend/app/api/routes/documents.py:89-99 dict literal). Add a new
-backend test `tests/test_document_detail_evidence.py` that creates a
-Prediction with both maps and asserts the keys land in the payload AND
-that no `bbox`/`region`/`coordinates` keys leak. Commit message:
-  feat(api): surface per-field evidence and confidence in document detail
+R8.6.a — frontend payload builder (TDD-only, no UI):
+  - Create frontend/src/lib/feedback.ts exporting FeedbackIssueType
+    (literal union of the five backend Literal values), FeedbackCorrection,
+    PartialFeedbackPayload, buildPartialFeedback(args), fieldPathFor(...).
+  - TDD: write frontend/src/__tests__/partial_feedback_payload.test.ts
+    first. Cover dotted/array path composition, empty-corrections rejection,
+    issue_type literal-only acceptance, request_id positivity check.
+  - Commit: feat(frontend): partial feedback payload builder and types
 
-R8.5.1 — frontend:
-  - Extend `frontend/src/types/studio.ts` (or stores/studio.ts types)
-    with `FieldEvidence` and the `per_field_*` maps.
-  - Create `frontend/src/components/FieldEvidencePopover.tsx`:
-    button hidden when no evidence; popover renders only `page`,
-    `quote`, `rationale` (and `source_text_hash` if surfaced). Drops
-    unknown keys client-side and console.warn in dev. NEVER renders
-    bbox / region / coordinates keys, even if backend leaks them.
-  - Create `<ConfidenceChip verdict>` for `up | uncertain | down`:
-    `up` silent, `uncertain` muted, `down` status-warning.
-  - Wire both into `frontend/src/pages/Studio.tsx` per-field rows.
-  - Mirror `studio.evidence.*` strings in `en.json`.
-  - TDD: write `frontend/src/__tests__/field_evidence_popover.test.tsx`
-    first; cover the happy path, the rationale-only path, the
-    no-evidence path, the bbox-leak defense, and the three chip
-    verdicts. Watch RED → implement → GREEN.
+R8.6.b — API Console feedback example + interactive test form:
+  - Modify pages/ApiConsole.tsx to expand the existing "Partial feedback
+    example" section into a dual panel: read-only docs + interactive
+    <FeedbackTestForm apiCode> gated on at least one API key existing.
+  - Create components/FeedbackTestForm.tsx. Plaintext API key lives in
+    transient component state only — never localStorage, never store,
+    cleared on submit success and on unmount. Fields: request_id,
+    entity_index, field_path, correct_value (JSON-parsed with string
+    fallback), comment, issue_type Select (5 backend literals), notes.
+  - On submit: api.post(`/extract/${apiCode}/feedback`, payload, {
+      headers: { 'X-Api-Key': pastedKey } }). Show counterexample_id on
+    success (toast or inline). Translated EmergeError on failure.
+  - i18n: feedback.* and feedback.issue_type.* in en.json.
+  - TDD: extend api_console.test.tsx + new feedback_test_form.test.tsx
+    asserting URL, X-Api-Key header, payload shape, transient-state
+    clearing on unmount, and form gated on key existence.
+  - Commit: feat(frontend): API Console partial-feedback example and test form
 
-Conventions established in R8.1–R8.4 (carry through):
-- TDD: spec test first, watch RED, implement, watch GREEN
-- useT() for every visible string; semantic Tailwind tokens only
-- EmergeError → errors.<code> i18n; Zustand store with
-  data / loading / error using emergeErrorKey from lib/api
-- After EACH commit (R8.5.0 backend AND R8.5.1 frontend), dispatch a
-  code-reviewer via superpowers:requesting-code-review skill (NOT a
-  bare general-purpose agent — see memory
-  feedback_gate_review_subagent.md).
-- When you touch a file, sweep matching items from the hygiene tail in
-  the same commit. Mirror every visible string into en.json.
-- After both commits, refresh the handoff doc and STOP for human
-  checkpoint before R8.6.
+R8.6.c — Studio Report-wrong dialog:
+  - Create components/ReportWrongFieldDialog.tsx. Opened via a small
+    "Report wrong" affordance on each field row (place next to R8.5's
+    Quote-icon evidence button). Pre-fills entity_index, field_path,
+    current value. Read-only collapsible "What integrators would send"
+    JSON block uses buildPartialFeedback to render the equivalent public
+    payload — the user learns the contract without sending it.
+  - Modify stores/studio.ts: add reportWrong({ entityIndex, fieldPath,
+    correctValue, issueType?, notes? }) that loads the latest prediction
+    output, applies the single correction client-side, and POSTs a
+    regular Annotation. Lab MUST NOT call /extract/.../feedback —
+    auth model is wrong and there's no key surface in Lab.
+  - i18n: studio.report_wrong.*.
+  - TDD: __tests__/report_wrong_dialog.test.tsx covering pre-fill,
+    submit calls annotation POST not feedback POST, displayed JSON
+    shape matches PartialFeedbackPayload contract, Cancel calls no API.
+  - Commit: feat(frontend): Studio Report-wrong dialog reuses partial-feedback shape
 
-R8.5 hard rules (CLAUDE.md + spec §3.2 / §8.2):
-- Field-level evidence is page + quote + rationale text only.
-  No bbox, coordinates, regions, polygons, spans, or visual overlays.
-  No way to draw on the document.
-- Popover button is hidden when no evidence exists for the field.
-- Confidence chip: `up` renders nothing, `uncertain` renders muted
-  chip, `down` renders status-warning chip.
-- The popover defends against bbox-key leakage from backend by
-  ignoring unknown keys and console.warn in dev.
-- Backend payload only adds keys; do not change `DocumentDetailOut`
-  shape semantics or break existing tests.
+Conventions to carry through (R8.1–R8.5):
+- TDD: spec test first, watch RED, implement, watch GREEN.
+- useT() for every visible string; semantic Tailwind tokens only.
+- EmergeError → errors.<code> i18n; emergeCode/emergeErrorKey from lib/api.
+- After EACH commit, dispatch superpowers:requesting-code-review (NOT a
+  bare general-purpose agent — see memory feedback_gate_review_subagent.md).
+- When you touch a file, sweep matching items from the hygiene tail
+  in the same commit. Mirror every visible string into en.json.
+- After all three commits, refresh the handoff doc and STOP for human
+  checkpoint before R8.7.
 
-Out of scope: Partial Feedback (R8.6), Walking Skeleton E2E (R8.7),
-AutoResearch viewer, MatchingProject, VerificationProject,
-real PDF preview, Studio entity nav / collapse, "Report wrong" dialog
-(that lands in R8.6 next to the evidence popover). Never read or
-print secrets.
+R8.6 hard rules:
+- Plaintext API key NEVER persists outside transient component state.
+  Verify by component test: re-mounting yields empty key field.
+- Studio Report-wrong NEVER calls /extract/.../feedback. Lab uses
+  authenticated /annotations only. The shared JSON shape is
+  educational, not the transport.
+- Counterexample semantics never apply in Lab (Annotations posted from
+  Studio remain role=none). Spec §1.
+- Snippets / examples only ever use the literal placeholder
+  `EMERGE_API_KEY`.
+- No bbox / coordinates / regions / polygons / spans anywhere
+  (continues from R8.5).
 
-R8.4 context the new session should know:
-- ReviewInboxBanner mounts on /projects/:id between ReadinessPanel
-  and the Document table; dedicated /projects/:id/review page lives
-  at the new "Review" sub-nav tab.
-- ProjectSubNav uses useMatch (pattern-based, trailing-slash safe).
-- emergeCode + emergeErrorKey helpers live in lib/api.ts (use them).
-- chrome-devtools-mcp smoke against project 2 (test1) verified R8.4
-  in light + dark; no console errors beyond pre-existing react-router
-  future-flag warnings.
-- Hygiene tail item (44): quality % renders ~80% ± 23% on 0 obs due
-  to Beta prior — backend should surface null on
-  `observation_count === 0`. R8.5 backend payload work is the natural
-  place to also fix (44); if you do, sweep it in the R8.5.0 commit.
-- Hygiene (45): banner "0 docs total" needs vibe-check qualifier
-  copy; (46) plural "1 needs review" — both deferred, sweep when
-  the affected file is next touched.
+Out of scope: R8.7 Walking Skeleton E2E, AutoResearch viewer,
+MatchingProject, VerificationProject, real PDF preview, Studio entity
+nav / collapse. Never read or print secrets — including provider keys
+in backend/.env, the Anthropic key, JWT contents, or any X-Api-Key
+plaintext outside the one-time reveal modal and the new transient
+form input.
+
+R8.5 context the new session should know:
+- types/studio.ts owns FieldEvidence, PerFieldEvidence,
+  PerFieldConfidence, ConfidenceVerdict, and EVIDENCE_ALLOWED_KEYS
+  (a *runtime* allow-list, not just a TS hint). Reuse the shape;
+  do not duplicate.
+- components/FieldEvidencePopover.tsx exports both
+  FieldEvidencePopover and ConfidenceChip. Studio per-field rows
+  already render both; the new "Report wrong" trigger should sit in
+  the same flex row to keep the field-level affordances together.
+- Studio.tsx FieldRow now uses useId() + aria-labelledby instead of a
+  wrapping <label>. New trigger buttons go inside the existing
+  inline flex container next to the field name; do not re-wrap.
+- The R8.5 popover's pickAllowedKeys + EVIDENCE_ALLOWED_KEYS pattern
+  is the model for the R8.6 transient-key form: keep secrets in
+  component state, never persist, console.warn on drift. The
+  R8.6 reviewer will look for this symmetry.
+- Hygiene tail item (44) on readiness quality CI with 0 obs is still
+  open; not naturally re-touched in R8.6 unless you also visit
+  ReadinessPanel. Items (45/46) on review-inbox banner copy/plural
+  are also still open and unrelated to R8.6 scope.
 ```
 
 ---
@@ -240,8 +279,8 @@ Prompt 3 (DONE)  => R8.2 API Console + publish flow + one-time API key reveal
                     + backend tz / api_published_at fixes
 Prompt 4 (DONE)  => R8.3 API Readiness Panel + gate-review fixes + hygiene 8/17
 Prompt 5 (DONE)  => R8.4 Review Inbox + sub-nav useMatch + hygiene 22
-Prompt 6 (NEXT)  => R8.5 Field Evidence display in Studio (incl small backend payload gap)
-Prompt 7         => R8.6 Partial Feedback UI, public shape + in-Lab reuse
+Prompt 6 (DONE)  => R8.5 Field Evidence display (backend payload + popover/chip)
+Prompt 7 (NEXT)  => R8.6 Partial Feedback UI, public shape + in-Lab reuse
 Prompt 8         => R8.7 Walking Skeleton E2E
 ```
 
