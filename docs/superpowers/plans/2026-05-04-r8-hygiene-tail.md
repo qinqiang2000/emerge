@@ -73,6 +73,16 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 
 ---
 
+## 3b. R8.5 minors
+
+| # | Origin | File / area | Item |
+|---|--------|-------------|------|
+| 47 | smoke (R8.5) | `frontend/src/components/FieldEvidencePopover.tsx:12-38` (`pickAllowedKeys`) | `console.warn` re-fires on every render. Doc-3 smoke logged "[FieldEvidencePopover] dropped forbidden/unknown evidence keys ... (8 times)" from a single bbox-leaked cell after a few popover open/close toggles — `pickAllowedKeys` runs in the render path and is invoked again on each `setOpen` state change. Frontend reviewer's minor #3 already flagged unconditional `console.warn`; this is the noisier sibling. Cheapest fix: hoist sanitisation to a `useMemo` keyed on `(entityIndex, fieldName, evidenceMap)` so the warn fires at most once per cell-shape change. Sweep when `FieldEvidencePopover.tsx` is next touched (likely R8.6 if the same allow-list pattern is reused for the partial-feedback transient key form). |
+| 48 | smoke (R8.5) | `frontend/src/components/FieldEvidencePopover.tsx` popover JSX | `source_text_hash` is in `EVIDENCE_ALLOWED_KEYS` (so it doesn't trigger drift `console.warn`) but the popover JSX never renders it. Plan said "and optionally `source_text_hash` if surfaced", which left this ambiguous. Two options: (a) render as small monospace footer like `hash: abc123de…` for diagnostic users; (b) drop from the allow-list so future drift surfaces it as a console.warn. Default toward (a) — diagnostic surface is non-empty and it gives integrators something to reference in support tickets. Non-blocking. |
+| 49 | smoke (R8.5) operational | dogfood SQLite DB pred 2 + pred 3 | R8.5 smoke seeded `per_field_evidence` and `per_field_confidence` on the existing predictions (Gemini didn't return them). Forbidden bbox/coordinates/region keys were stripped post-smoke; spec-allowed keys remain. R8.6 smoke can reuse this seed; if a fresh re-extract is wanted, null both columns or `DELETE` the predictions and re-trigger extract. |
+
+---
+
 ## 3a. R8.4 minors
 
 | # | Origin | File / area | Item |
