@@ -7,7 +7,7 @@ as `no_production_feedback`, NOT 100% certainty.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engine.recompute import (
@@ -105,14 +105,30 @@ async def build_readiness(
             .join(Document, Document.id == Annotation.document_id)
             .where(
                 Document.project_id == project_id,
+                # Dogfood #1: only Lab-side Annotations count toward the
+                # editor's evidence coverage. Counterexamples (queried below)
+                # come from public feedback regardless of Document.source, so
+                # this filter is intentionally only on the saved-Annotation
+                # leg.
+                Document.source == "lab",
                 Annotation.role == AnnotationRole.NONE.value,
                 Annotation.status == AnnotationStatus.SAVED.value,
+                # Mirror versions.lock_status (CSE C2): exclude flag-only
+                # rows whose `notes` carries `[lab_flag]={...}` — they are
+                # markers, not corrections, and must not drive the
+                # `lock_candidate` heuristic or the user-facing "Schema
+                # ready to lock" message. SQL `NULL NOT LIKE` evaluates to
+                # NULL, so notes IS NULL must be explicit.
+                or_(
+                    Annotation.notes.is_(None),
+                    ~Annotation.notes.like("[lab_flag]=%"),
+                ),
             )
         )
     ).scalars().all()
-    reviewed_docs = len({a.document_id for a in saved_anns})
-    reviewed_entities = sum(len(a.output or []) for a in saved_anns)
-    reviewed_fields = sum(_count_scalar_fields(a.output or []) for a in saved_anns)
+    annotated_docs = len({a.document_id for a in saved_anns})
+    annotated_entities = sum(len(a.output or []) for a in saved_anns)
+    annotated_fields = sum(_count_scalar_fields(a.output or []) for a in saved_anns)
 
     # Field-level evidence coverage from latest predictions on reviewed docs.
     field_evidence_fields = 0
@@ -133,12 +149,12 @@ async def build_readiness(
         for p in by_doc.values():
             field_evidence_fields += _count_evidence_fields(p.per_field_evidence)
     field_evidence_coverage_ratio = (
-        field_evidence_fields / reviewed_fields if reviewed_fields else 0.0
+        field_evidence_fields / annotated_fields if annotated_fields else 0.0
     )
     evidence_coverage = EvidenceCoverageOut(
-        reviewed_docs=reviewed_docs,
-        reviewed_entities=reviewed_entities,
-        reviewed_fields=reviewed_fields,
+        annotated_docs=annotated_docs,
+        annotated_entities=annotated_entities,
+        annotated_fields=annotated_fields,
         field_evidence_fields=field_evidence_fields,
         field_evidence_coverage_ratio=field_evidence_coverage_ratio,
     )
@@ -195,9 +211,9 @@ async def build_readiness(
     maturity_status = "draft"
     if active_v is not None and active_v.locked:
         maturity_status = "locked"
-    elif reviewed_docs >= 5 and reviewed_entities >= 20 and field_evidence_fields > 0:
+    elif annotated_docs >= 5 and annotated_entities >= 20 and field_evidence_fields > 0:
         maturity_status = "lock_candidate"
-    elif reviewed_docs >= 3:
+    elif annotated_docs >= 3:
         maturity_status = "stabilizing"
     maturity_message = {
         "draft": "Keep reviewing — schema is still moving.",
@@ -207,8 +223,8 @@ async def build_readiness(
     }[maturity_status]
     schema_maturity = SchemaMaturityOut(
         status=maturity_status,
-        reviewed_docs=reviewed_docs,
-        reviewed_entities=reviewed_entities,
+        annotated_docs=annotated_docs,
+        annotated_entities=annotated_entities,
         # No project-wide breaking-change history yet; conservative 0.
         recent_schema_breaking_changes=0,
         message=maturity_message,
@@ -255,7 +271,7 @@ async def build_readiness(
     # 6. additional warnings
     if ce_count == 0:
         warnings.append("no_production_feedback")
-    if reviewed_docs < 3 or obs < 10:
+    if annotated_docs < 3 or obs < 10:
         warnings.append("low_evidence")
     if field_evidence_fields == 0 or field_evidence_coverage_ratio < 0.1:
         warnings.append("low_field_evidence")

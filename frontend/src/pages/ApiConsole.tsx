@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiKeyRevealModal } from "@/components/ApiKeyRevealModal";
+import { ConfirmRevokeKeyDialog } from "@/components/ConfirmRevokeKeyDialog";
 import { FeedbackTestForm } from "@/components/FeedbackTestForm";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { ReadinessPanel } from "@/components/ReadinessPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/Table";
 import { useT } from "@/i18n/useT";
 import {
@@ -45,6 +47,15 @@ export function ApiConsolePage() {
   const [rollbackTarget, setRollbackTarget] = useState<string>("");
   const [revealedKey, setRevealedKey] = useState<ApiKeyOnce | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Dogfood follow-up #5: Revoke is destructive with no recall path —
+  // gate behind a confirmation. Holding the {id, name} pair so the
+  // dialog can interpolate the key name into the warning copy.
+  const [pendingRevoke, setPendingRevoke] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+
+  const toast = useToast();
 
   useEffect(() => {
     if (!Number.isFinite(projectId)) return;
@@ -107,6 +118,7 @@ export function ApiConsolePage() {
         activateApiCode,
         project.active_version_id ?? undefined,
       );
+      toast.show(t("common.saved"));
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -140,6 +152,7 @@ export function ApiConsolePage() {
     setActionError(null);
     try {
       await unpublish(projectId);
+      toast.show(t("common.saved"));
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -155,10 +168,13 @@ export function ApiConsolePage() {
     }
   }
 
-  async function handleRevoke(keyId: number) {
+  async function confirmRevoke() {
+    if (pendingRevoke === null) return;
     setActionError(null);
     try {
-      await revokeKey(projectId, keyId);
+      await revokeKey(projectId, pendingRevoke.id);
+      toast.show(t("common.saved"));
+      setPendingRevoke(null);
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -340,7 +356,9 @@ export function ApiConsolePage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void handleRevoke(k.id)}
+                        onClick={() =>
+                          setPendingRevoke({ id: k.id, name: k.name })
+                        }
                       >
                         {t("api_console.revoke_button")}
                       </Button>
@@ -365,6 +383,17 @@ export function ApiConsolePage() {
           open
           apiKey={revealedKey}
           onConfirmDismiss={() => setRevealedKey(null)}
+        />
+      ) : null}
+
+      {pendingRevoke ? (
+        <ConfirmRevokeKeyDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPendingRevoke(null);
+          }}
+          keyName={pendingRevoke.name}
+          onConfirm={() => void confirmRevoke()}
         />
       ) : null}
     </>
@@ -429,12 +458,22 @@ function VersionPointerCard({
 function ContractDiffSection({ diff }: { diff: ContractDiff | null }) {
   const t = useT();
   if (!diff) return null;
+  // Dogfood follow-up #6: a null prior_published_version_id means this is
+  // the first publish — every "required_field_added" is technically
+  // breaking against the empty prior, but it's noise dressed as alarms.
+  // Tone the section to informational without hiding the field list.
+  const isInitial =
+    diff.from_version_id === null || diff.from_version_id === undefined;
   return (
     <section className="space-y-2 rounded-md border border-border-default bg-bg-elevated p-4">
       <h2 className="text-sm font-semibold text-fg-primary">
         {t("api_console.diff_section")}
       </h2>
-      {diff.has_breaking_changes ? (
+      {isInitial ? (
+        <p className="text-sm text-fg-muted">
+          {t("api_console.diff_initial_callout")}
+        </p>
+      ) : diff.has_breaking_changes ? (
         <p className="text-sm text-status-error">
           {t("api_console.diff_breaking_warning")}
         </p>
@@ -445,7 +484,15 @@ function ContractDiffSection({ diff }: { diff: ContractDiff | null }) {
         <ul className="space-y-1">
           {diff.items.map((item, i) => (
             <li key={i} className="flex items-center gap-2 text-sm">
-              <Badge tone={item.severity === "breaking" ? "error" : "success"}>
+              <Badge
+                tone={
+                  isInitial
+                    ? "muted"
+                    : item.severity === "breaking"
+                    ? "error"
+                    : "success"
+                }
+              >
                 {item.severity === "breaking"
                   ? t("api_console.diff_breaking_label")
                   : t("api_console.diff_non_breaking_label")}
@@ -470,12 +517,12 @@ function SnippetsPanel({ apiCode }: { apiCode: string | null }) {
   const code = apiCode ?? "your-api-code";
   const curl = useMemo(
     () =>
-      `curl -X POST "https://api.emerge.dev/extract/${code}" \\\n  -H "X-Api-Key: $EMERGE_API_KEY" \\\n  -F "file=@invoice.pdf"`,
+      `curl -X POST "https://api.emerge.dev/extract/${code}" \\\n  -H "X-Api-Key: $EMERGE_API_KEY" \\\n  -F "file=@invoice.pdf"\n# {request_id, prediction_id, project_version_id, output: {entities: [...]}}`,
     [code],
   );
   const py = useMemo(
     () =>
-      `import os, requests\nresp = requests.post(\n  f"https://api.emerge.dev/extract/${code}",\n  headers={"X-Api-Key": os.environ["EMERGE_API_KEY"]},\n  files={"file": open("invoice.pdf", "rb")},\n)\nprint(resp.json())`,
+      `import os, requests\nresp = requests.post(\n  f"https://api.emerge.dev/extract/${code}",\n  headers={"X-Api-Key": os.environ["EMERGE_API_KEY"]},\n  files={"file": open("invoice.pdf", "rb")},\n).json()\nentities = resp["output"]["entities"]\nrequest_id = resp["request_id"]   # echo back as feedback's request_id`,
     [code],
   );
   return (

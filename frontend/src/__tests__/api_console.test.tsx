@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ToastProvider } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { ApiConsolePage } from "@/pages/ApiConsole";
 import { useProjects, type Project } from "@/stores/projects";
@@ -19,16 +20,16 @@ const READINESS_STUB: APIReadinessOut = {
     vibe_check_size: 0,
   },
   evidence_coverage: {
-    reviewed_docs: 0,
-    reviewed_entities: 0,
-    reviewed_fields: 0,
+    annotated_docs: 0,
+    annotated_entities: 0,
+    annotated_fields: 0,
     field_evidence_fields: 0,
     field_evidence_coverage_ratio: 0,
   },
   schema_maturity: {
     status: "draft",
-    reviewed_docs: 0,
-    reviewed_entities: 0,
+    annotated_docs: 0,
+    annotated_entities: 0,
     recent_schema_breaking_changes: 0,
     message: "",
   },
@@ -74,11 +75,13 @@ const KEYS = [
 
 function renderConsole() {
   return render(
-    <MemoryRouter initialEntries={["/projects/1/api-console"]}>
-      <Routes>
-        <Route path="/projects/:id/api-console" element={<ApiConsolePage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={["/projects/1/api-console"]}>
+        <Routes>
+          <Route path="/projects/:id/api-console" element={<ApiConsolePage />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -172,6 +175,49 @@ describe("ApiConsolePage", () => {
     ).toBeInTheDocument();
   });
 
+  it("Contract diff swaps to initial-publish copy when from_version_id is null", async () => {
+    // Dogfood follow-up #6: a first publish has no prior version, so
+    // "Activating this version will break existing integrators" is noise.
+    vi.spyOn(api, "get").mockImplementation((url: string) => {
+      if (url.endsWith("/readiness"))
+        return Promise.resolve({ data: READINESS_STUB });
+      if (url.endsWith("/versions"))
+        return Promise.resolve({ data: VERSIONS });
+      if (url.endsWith("/api-keys"))
+        return Promise.resolve({ data: KEYS });
+      if (url.endsWith("/contract-diff") || url.includes("/contract-diff?"))
+        return Promise.resolve({
+          data: {
+            from_version_id: null,
+            to_version_id: 7,
+            // Items are technically "breaking" against an empty prior, but
+            // for an initial publish that's noise dressed as alarms.
+            has_breaking_changes: true,
+            items: [
+              {
+                kind: "required_field_added",
+                severity: "breaking",
+                field_name: "shop_name",
+                before: null,
+                after: { name: "shop_name", type: "string" },
+                message: "required field 'shop_name' added",
+              },
+            ],
+          },
+        });
+      return Promise.resolve({ data: PROJECT });
+    });
+
+    renderConsole();
+    await settle();
+    expect(
+      screen.queryByText(/will break existing integrators/i),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/initial contract — no prior version/i),
+    ).toBeInTheDocument();
+  });
+
   it("Activate-for-API button is disabled when active version is unlocked", async () => {
     renderConsole();
     await settle();
@@ -219,8 +265,12 @@ describe("ApiConsolePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("Revoke removes the key row from the table", async () => {
-    vi.spyOn(api, "delete").mockResolvedValue({
+  it("Revoke now requires a confirmation click and removes the row + shows toast", async () => {
+    // Dogfood follow-up #5: clicking the row's Revoke button must NOT
+    // delete the key directly; it opens a Radix Dialog with the key name
+    // interpolated. Only after clicking the dialog's primary "Revoke"
+    // button should the network DELETE fire and the row disappear.
+    const del = vi.spyOn(api, "delete").mockResolvedValue({
       data: { ...KEYS[0]! },
     });
 
@@ -228,10 +278,25 @@ describe("ApiConsolePage", () => {
     await settle();
     expect(await screen.findByText("ek_abc")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /revoke/i }));
+    // Open the confirmation dialog.
+    fireEvent.click(
+      screen.getByRole("button", { name: /^revoke$/i }),
+    );
+    // Radix AlertDialog gives us role="alertdialog" — scope all
+    // subsequent queries inside it instead of relying on positional
+    // ordering of duplicate "Revoke" labels.
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/revoke key 'default'/i)).toBeInTheDocument();
+    expect(del).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^revoke$/i }));
+
     await waitFor(() =>
       expect(screen.queryByText("ek_abc")).not.toBeInTheDocument(),
     );
+    expect(del).toHaveBeenCalled();
+
+    const viewport = await screen.findByTestId("toast-viewport");
+    expect(viewport.textContent ?? "").toMatch(/saved/i);
   });
 
   it("renders the read-only feedback example block on every load", async () => {

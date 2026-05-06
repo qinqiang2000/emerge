@@ -21,16 +21,16 @@ const READINESS_STUB: APIReadinessOut = {
     vibe_check_size: 0,
   },
   evidence_coverage: {
-    reviewed_docs: 0,
-    reviewed_entities: 0,
-    reviewed_fields: 0,
+    annotated_docs: 0,
+    annotated_entities: 0,
+    annotated_fields: 0,
     field_evidence_fields: 0,
     field_evidence_coverage_ratio: 0,
   },
   schema_maturity: {
     status: "draft",
-    reviewed_docs: 0,
-    reviewed_entities: 0,
+    annotated_docs: 0,
+    annotated_entities: 0,
     recent_schema_breaking_changes: 0,
     message: "",
   },
@@ -241,6 +241,6 @@ describe("DocumentListPage", () => {
     mockGet(() => []);
     renderPage();
     await settle();
-    expect(screen.getByText(/no documents/i)).toBeInTheDocument();
+    expect(screen.getByText(/no documents yet/i)).toBeInTheDocument();
   });
 });

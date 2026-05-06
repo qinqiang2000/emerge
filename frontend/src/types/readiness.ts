@@ -25,17 +25,21 @@ export type QualityEstimate = {
 };
 
 export type EvidenceCoverage = {
-  reviewed_docs: number;
-  reviewed_entities: number;
-  reviewed_fields: number;
+  // Dogfood follow-up #7: `annotated_*` (saved Annotations on Lab docs)
+  // and `field_evidence_*` (per-field quote evidence) used to collide on
+  // the same surface as "reviewed". Names now match what they actually
+  // count.
+  annotated_docs: number;
+  annotated_entities: number;
+  annotated_fields: number;
   field_evidence_fields: number;
   field_evidence_coverage_ratio: number;
 };
 
 export type SchemaMaturity = {
   status: SchemaMaturityStatus;
-  reviewed_docs: number;
-  reviewed_entities: number;
+  annotated_docs: number;
+  annotated_entities: number;
   recent_schema_breaking_changes: number;
   message: string;
 };

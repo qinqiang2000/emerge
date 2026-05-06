@@ -17,16 +17,16 @@ const BASE_READINESS: APIReadinessOut = {
     vibe_check_size: 12,
   },
   evidence_coverage: {
-    reviewed_docs: 12,
-    reviewed_entities: 48,
-    reviewed_fields: 134,
+    annotated_docs: 12,
+    annotated_entities: 48,
+    annotated_fields: 134,
     field_evidence_fields: 83,
     field_evidence_coverage_ratio: 0.62,
   },
   schema_maturity: {
     status: "lock_candidate",
-    reviewed_docs: 12,
-    reviewed_entities: 48,
+    annotated_docs: 12,
+    annotated_entities: 48,
     recent_schema_breaking_changes: 0,
     message: "Schema ready to lock. Confirm evidence coverage first.",
   },
@@ -73,6 +73,53 @@ describe("ReadinessPanel", () => {
     expect(screen.getByTestId("readiness-no-feedback")).toBeInTheDocument();
   });
 
+  it("hides the prior-only quality number when observation_count is 0 (no false signal)", async () => {
+    mockReadiness({
+      quality_estimate: {
+        score: 0.8,
+        judge_component: 0.8,
+        judge_precision: 0.8,
+        ci_low: 0.57,
+        ci_high: 1.0,
+        observation_count: 0,
+        vibe_check_size: 3,
+      },
+      risky_fields: [],
+    });
+    await renderPanel();
+    const quality = await screen.findByTestId("readiness-quality");
+    // The Bayesian prior would render as "80% ± 23%" — must not show on N=0.
+    expect(within(quality).queryByText(/80\s*%/)).not.toBeInTheDocument();
+    expect(within(quality).queryByText(/±/)).not.toBeInTheDocument();
+    expect(
+      within(quality).getByText(/awaiting first verdict|no signal/i),
+    ).toBeInTheDocument();
+    // The obs/vibe-check meta is still shown so the user understands why.
+    expect(within(quality).getByText(/0\s*obs/i)).toBeInTheDocument();
+  });
+
+  it("uses 'no verdicts yet' copy for risky fields when observation_count is 0", async () => {
+    mockReadiness({
+      quality_estimate: {
+        score: 0.8,
+        judge_component: 0.8,
+        judge_precision: 0.8,
+        ci_low: 0.57,
+        ci_high: 1.0,
+        observation_count: 0,
+        vibe_check_size: 3,
+      },
+      risky_fields: [],
+    });
+    await renderPanel();
+    const rf = await screen.findByTestId("readiness-risky");
+    expect(
+      within(rf).getByText(/no verdicts yet|risky fields appear after the judge/i),
+    ).toBeInTheDocument();
+    // The "all clean" reading must NOT appear when we haven't measured anything.
+    expect(within(rf).queryByText(/no risky fields detected/i)).not.toBeInTheDocument();
+  });
+
   it("renders quality CI band as point% ± half% with obs and vibe-check counts", async () => {
     mockReadiness();
     await renderPanel();
@@ -93,6 +140,12 @@ describe("ReadinessPanel", () => {
     expect(within(ev).getByText(/48/)).toBeInTheDocument();
     expect(within(ev).getByText(/134/)).toBeInTheDocument();
     expect(within(ev).getByText(/62\s*%/)).toBeInTheDocument();
+    // Dogfood follow-up #7: the count line says "annotated", not
+    // "fields reviewed", so it stops colliding with "% with field evidence".
+    expect(within(ev).getByText(/annotated/i)).toBeInTheDocument();
+    expect(
+      within(ev).queryByText(/fields reviewed/i),
+    ).not.toBeInTheDocument();
   });
 
   it("renders schema maturity using translated status, never raw slug", async () => {
@@ -182,12 +235,12 @@ describe("ReadinessPanel", () => {
     expect(warn).toHaveBeenCalled();
   });
 
-  it("renders regression count when counterexamples_total > 0 and never reads raw status slug", async () => {
+  it("renders regression count when status is measured (passing/failing) and never reads raw status slug", async () => {
     mockReadiness({
       regression_health: {
         counterexamples_total: 8,
         counterexample_component: 0.875,
-        status: "unknown",
+        status: "passing",
       },
     });
     await renderPanel();
@@ -197,6 +250,24 @@ describe("ReadinessPanel", () => {
     expect(
       within(reg).queryByText(/no production feedback/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("suppresses the passing count when status is 'unknown' (avoids contradicting the 'not yet computed' line)", async () => {
+    mockReadiness({
+      regression_health: {
+        counterexamples_total: 8,
+        // backend may report a fallback component while still flagging status=unknown
+        counterexample_component: 1.0,
+        status: "unknown",
+      },
+    });
+    await renderPanel();
+    const reg = await screen.findByTestId("readiness-regression");
+    expect(within(reg).queryByText(/8\s*\/\s*8/)).not.toBeInTheDocument();
+    expect(within(reg).queryByText(/passing/i)).not.toBeInTheDocument();
+    expect(
+      within(reg).getByText(/not yet computed|status unknown/i),
+    ).toBeInTheDocument();
   });
 
   it("renders distinct copy for each regression_health.status value", async () => {

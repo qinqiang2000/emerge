@@ -12,9 +12,14 @@ class QualityEstimateOut(BaseModel):
 
 
 class EvidenceCoverageOut(BaseModel):
-    reviewed_docs: int
-    reviewed_entities: int
-    reviewed_fields: int
+    # `annotated_*` (saved Annotations on Lab docs) and
+    # `field_evidence_*` (per-field quote evidence) intentionally collide on
+    # the same surface, so naming them by what they actually count avoids
+    # the dogfood-#7 confusion of "72 fields reviewed" vs "0% with field
+    # evidence".
+    annotated_docs: int
+    annotated_entities: int
+    annotated_fields: int
     field_evidence_fields: int
     field_evidence_coverage_ratio: float
 
@@ -22,8 +27,8 @@ class EvidenceCoverageOut(BaseModel):
 class SchemaMaturityOut(BaseModel):
     # draft | stabilizing | lock_candidate | locked
     status: str
-    reviewed_docs: int
-    reviewed_entities: int
+    annotated_docs: int
+    annotated_entities: int
     recent_schema_breaking_changes: int
     message: str
 

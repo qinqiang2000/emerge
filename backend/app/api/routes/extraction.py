@@ -39,6 +39,12 @@ async def batch_extract(
         await session.execute(
             select(Document.id).where(
                 Document.project_id == project_id,
+                # Spec §7.1 / dogfood follow-up #1: editor's batch extract
+                # must not pick up `source='public_api'` rows. Without this,
+                # a failed public extract would be re-run against the Lab
+                # `active_version_id`, silently mutating integrator
+                # predictions with a non-published version.
+                Document.source == "lab",
                 Document.status.in_(
                     [DocumentStatus.UPLOADED.value, DocumentStatus.ERRORED.value]
                 ),

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ToastProvider } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { StudioPage } from "@/pages/Studio";
 import { useStudio, type DocumentDetail } from "@/stores/studio";
@@ -29,15 +30,19 @@ const SEEDED_DOC: DocumentDetail = {
 };
 
 function renderStudio() {
+  // Wrap with <ToastProvider> so the production-realistic save → toast
+  // path is exercised end-to-end (dogfood follow-up #4).
   return render(
-    <MemoryRouter initialEntries={["/projects/7/studio/102"]}>
-      <Routes>
-        <Route
-          path="/projects/:id/studio/:did"
-          element={<StudioPage />}
-        />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={["/projects/7/studio/102"]}>
+        <Routes>
+          <Route
+            path="/projects/:id/studio/:did"
+            element={<StudioPage />}
+          />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -123,6 +128,43 @@ describe("StudioPage minimal correction save", () => {
       },
     );
     await settle();
+  });
+
+  it("Save success surfaces the 'Saved' toast pill (dogfood #4)", async () => {
+    vi.spyOn(api, "post").mockResolvedValue({ data: { id: 123 } });
+    renderStudio();
+    await settle();
+
+    fireEvent.change(screen.getByDisplayValue("100"), {
+      target: { value: "200" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
+    await settle();
+
+    // The Radix viewport is the well-known surface for any toast Root.
+    const viewport = await screen.findByTestId("toast-viewport");
+    expect(viewport.textContent ?? "").toMatch(/saved/i);
+  });
+
+  it("Save success after a prior failure still surfaces the toast", async () => {
+    // Pre-seed a stale error to simulate a failed prior save still being
+    // present in the store. handleSave must not gate the success toast on
+    // "error stayed equal to its previous value" — `save` resets `error`
+    // to null on entry, so a successful retry has error === null.
+    useStudio.setState({ error: "errors.SOMETHING" });
+    vi.spyOn(api, "post").mockResolvedValue({ data: { id: 123 } });
+
+    renderStudio();
+    await settle();
+
+    fireEvent.change(screen.getByDisplayValue("100"), {
+      target: { value: "200" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
+    await settle();
+
+    const viewport = await screen.findByTestId("toast-viewport");
+    expect(viewport.textContent ?? "").toMatch(/saved/i);
   });
 
   it("disables Save when draft equals seeded baseline", async () => {

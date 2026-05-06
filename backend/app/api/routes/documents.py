@@ -54,7 +54,14 @@ async def list_documents(
     await _project_or_404(session, project_id, workspace_id)
     rows = (
         await session.execute(
-            select(Document).where(Document.project_id == project_id).order_by(Document.id.desc())
+            select(Document)
+            .where(
+                Document.project_id == project_id,
+                # Spec §7.1 / dogfood #1: integrator-traffic Documents
+                # (source='public_api') stay out of the editor's workspace.
+                Document.source == "lab",
+            )
+            .order_by(Document.id.desc())
         )
     ).scalars().all()
     return [DocumentOut.model_validate(d) for d in rows]

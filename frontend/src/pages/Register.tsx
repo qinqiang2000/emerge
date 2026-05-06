@@ -44,7 +44,11 @@ export function RegisterPage() {
               minLength={8}
             />
           </label>
-          {error && <div className="text-sm text-status-error">{t(error)}</div>}
+          {error && (
+            <div className="text-sm text-status-error">
+              {t(error === "errors.CONFLICT" ? "errors.EMAIL_TAKEN" : error)}
+            </div>
+          )}
           <Button type="submit" disabled={loading} className="w-full">
             {t("auth.submit_register")}
           </Button>

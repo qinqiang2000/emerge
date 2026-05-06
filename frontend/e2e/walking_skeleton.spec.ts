@@ -123,8 +123,14 @@ test.describe("walking skeleton", () => {
       await expect(page).toHaveURL(
         new RegExp(`/projects/${projectId}/studio/${docId}$`),
       );
-      // The first field-row Input is aria-labelledby the field-name span.
-      const fieldInput = page.getByLabel(fieldName).first();
+      // The field-row Input is aria-labelledby the field-name span — its
+      // accessible name is exactly the field name. Scope by role so we
+      // skip sibling buttons (e.g. FlagFieldMenu's "More actions for {x}"
+      // trigger uses an aria-label that substring-matches the field name
+      // and would otherwise be the first hit for getByLabel).
+      const fieldInput = page
+        .getByRole("textbox", { name: fieldName, exact: true })
+        .first();
       await expect(fieldInput).toBeVisible({ timeout: 30_000 });
       await fieldInput.fill(newValue);
       const saveButton = page.getByRole("button", { name: /save correction/i });

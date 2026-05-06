@@ -19,6 +19,7 @@
     "pointer_empty": "Not yet published",
     "diff_section": "Contract diff",
     "diff_breaking_warning": "Activating this version will break existing integrators. Coordinate before publishing.",
+    "diff_initial_callout": "Initial contract — no prior version to break.",
     "diff_breaking_label": "Breaking",
     "diff_non_breaking_label": "Non-breaking",
     "diff_empty": "No schema differences between Production and Lab.",
@@ -49,6 +50,9 @@
     "key_created_col": "Created",
     "key_actions_col": "Actions",
     "revoke_button": "Revoke",
+    "revoke_dialog_title": "Revoke API key",
+    "revoke_dialog_body": "Revoke key '{{name}}'? Integrators using this key will start getting 403 immediately.",
+    "revoke_dialog_confirm": "Revoke",
     "snippets_section": "Snippets",
     "snippets_hint": "Replace EMERGE_API_KEY with your secrets-manager value. The API key is shown once on creation.",
     "feedback_example_title": "Partial feedback example",
@@ -156,19 +160,19 @@
       "uncertain": "Uncertain",
       "needs_review": "Needs review"
     },
-    "report_wrong": {
-      "trigger_aria": "Report this field as wrong",
-      "dialog_title": "Report wrong field",
-      "dialog_hint": "This saves a Lab correction (Annotation). Production integrators send the same JSON shape via /extract/{api_code}/feedback.",
-      "entity_index_label": "Entity index",
-      "field_path_label": "Field path",
-      "current_value_label": "Current value",
-      "corrected_value_label": "Corrected value",
-      "show_equivalent": "What integrators would send",
-      "save_button": "Save",
+    "flag": {
+      "trigger_aria": "More actions for {{field}}",
+      "dialog_title": "Flag this field",
+      "dialog_hint": "Save a Lab annotation flagging this field without changing its value. Editing the textbox above is the way to correct a value; use this for issues that aren't a value-fix (e.g. unparseable output, field doesn't apply).",
+      "issue_type_label": "Issue type",
+      "comment_label": "Comment (optional)",
       "cancel_button": "Cancel",
-      "errors": {
-        "no_prediction": "Cannot report — this document has no prediction yet."
+      "flag_button": "Flag",
+      "issue_type": {
+        "missing_field": "Missing / N/A",
+        "extra_field": "Extra field",
+        "wrong_entity_count": "Wrong entity count",
+        "other": "Other"
       }
     }
   },
@@ -213,7 +217,8 @@
     "UNAUTHORIZED": "Please sign in.",
     "FORBIDDEN": "You don't have permission to do that.",
     "NOT_FOUND": "We couldn't find that.",
-    "CONFLICT": "That conflicts with the current state.",
+    "CONFLICT": "That already exists or conflicts with the current state.",
+    "EMAIL_TAKEN": "An account with this email already exists. Sign in instead.",
     "VALIDATION_FAILED": "Please check the form and try again.",
     "RATE_LIMITED": "You're moving too fast — try again in a moment.",
     "INTERNAL_ERROR": "Something went wrong. Please retry.",
@@ -235,9 +240,10 @@
     "empty": "No readiness signal yet.",
     "quality_label": "Quality",
     "quality_value": "{{point}}% ± {{half}}%",
+    "quality_no_signal": "Awaiting first verdict",
     "quality_meta": "{{obs}} obs · vibe-check {{vibe}}",
     "evidence_label": "Evidence",
-    "evidence_value": "{{docs}} docs · {{entities}} entities · {{fields}} fields reviewed",
+    "evidence_value": "{{docs}} docs · {{entities}} entities · {{fields}} annotated",
     "evidence_coverage": "{{ratio}}% with field evidence",
     "maturity_label": "Schema",
     "maturity_breaking_changes": "{{count}} breaking changes recorded",
@@ -249,6 +255,7 @@
     "regression_status_unknown": "Regression status not yet computed",
     "risky_label": "Risky fields",
     "risky_empty": "No risky fields detected.",
+    "risky_no_signal": "No verdicts yet — risky fields appear after the judge runs.",
     "risky_more": "+{{count}} more",
     "blockers_label": "Publish blockers",
     "warnings_label": "Warnings",
@@ -268,6 +275,8 @@
     "all_count": "{{count}} docs total",
     "review_next": "Review next",
     "all_caught_up": "All caught up — nothing in the review queue right now.",
+    "needs_judge": "Waiting on the judge — no verdicts yet for the {{count}} document(s) in the vibe-check pool.",
+    "empty_pool": "No documents in the vibe-check pool yet — extract a few to start reviewing.",
     "page_title": "Review queue",
     "section_required": "Required review",
     "section_spot_check": "Spot-check",
@@ -288,6 +297,7 @@
     "loading": "Loading…",
     "yes": "Yes",
     "no": "No",
-    "copy": "Copy"
+    "copy": "Copy",
+    "saved": "Saved"
   }
 }

@@ -1,15 +1,15 @@
-import { Flag } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
 import { useParams } from "react-router-dom";
 
 import {
   ConfidenceChip,
   FieldEvidencePopover,
 } from "@/components/FieldEvidencePopover";
+import { FlagFieldMenu } from "@/components/FlagFieldMenu";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
-import { ReportWrongFieldDialog } from "@/components/ReportWrongFieldDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 import { useT } from "@/i18n/useT";
 import {
   useStudio,
@@ -46,6 +46,7 @@ export function StudioPage() {
   const load = useStudio((s) => s.load);
   const setDraft = useStudio((s) => s.setDraft);
   const save = useStudio((s) => s.save);
+  const toast = useToast();
 
   useEffect(() => {
     if (Number.isFinite(projectId) && Number.isFinite(documentId)) {
@@ -54,6 +55,17 @@ export function StudioPage() {
   }, [load, projectId, documentId]);
 
   const dirty = isDirty(draft, baselineOutput(doc));
+
+  async function handleSave() {
+    // Dogfood follow-up #4: surface a "Saved" pill on success. The store's
+    // `save` swallows network errors into `error` rather than throwing, so
+    // re-read the latest store state to decide whether to toast. `save`
+    // resets `error` to null on entry, so success means error is null.
+    await save(projectId);
+    if (useStudio.getState().error === null) {
+      toast.show(t("common.saved"));
+    }
+  }
 
   function updateField(entityIdx: number, key: string, value: string) {
     const next = draft.map((entity, i) =>
@@ -100,7 +112,7 @@ export function StudioPage() {
         </div>
         <Button
           disabled={!dirty || saving}
-          onClick={() => void save(projectId)}
+          onClick={() => void handleSave()}
         >
           {saving ? t("common.loading") : t("studio.save_correction")}
         </Button>
@@ -181,9 +193,9 @@ function FieldRow({
   evidenceMap: PerFieldEvidence | null | undefined;
   onChange: (next: string) => void;
 }) {
-  const t = useT();
+  // Dogfood follow-up #3: editing the textbox IS the correction; the
+  // ⋮ menu only handles flag-without-correcting (e.g. unparseable, N/A).
   const labelId = useId();
-  const [reportOpen, setReportOpen] = useState(false);
   const display =
     value === null || value === undefined
       ? ""
@@ -203,30 +215,17 @@ function FieldRow({
           fieldName={fieldName}
           evidenceMap={evidenceMap}
         />
-        <button
-          type="button"
-          aria-label={t("studio.report_wrong.trigger_aria")}
-          onClick={() => setReportOpen(true)}
-          className="text-fg-muted hover:text-fg-primary"
-        >
-          <Flag size={14} />
-        </button>
+        <FlagFieldMenu
+          projectId={projectId}
+          entityIndex={entityIndex}
+          fieldName={fieldName}
+        />
       </div>
       <Input
         aria-labelledby={labelId}
         value={display}
         onChange={(e) => onChange(e.target.value)}
       />
-      {reportOpen ? (
-        <ReportWrongFieldDialog
-          open={reportOpen}
-          onOpenChange={setReportOpen}
-          entityIndex={entityIndex}
-          fieldName={fieldName}
-          currentValue={value}
-          projectId={projectId}
-        />
-      ) : null}
     </div>
   );
 }
