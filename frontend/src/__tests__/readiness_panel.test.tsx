@@ -17,16 +17,16 @@ const BASE_READINESS: APIReadinessOut = {
     vibe_check_size: 12,
   },
   evidence_coverage: {
-    reviewed_docs: 12,
-    reviewed_entities: 48,
-    reviewed_fields: 134,
+    annotated_docs: 12,
+    annotated_entities: 48,
+    annotated_fields: 134,
     field_evidence_fields: 83,
     field_evidence_coverage_ratio: 0.62,
   },
   schema_maturity: {
     status: "lock_candidate",
-    reviewed_docs: 12,
-    reviewed_entities: 48,
+    annotated_docs: 12,
+    annotated_entities: 48,
     recent_schema_breaking_changes: 0,
     message: "Schema ready to lock. Confirm evidence coverage first.",
   },
@@ -140,6 +140,12 @@ describe("ReadinessPanel", () => {
     expect(within(ev).getByText(/48/)).toBeInTheDocument();
     expect(within(ev).getByText(/134/)).toBeInTheDocument();
     expect(within(ev).getByText(/62\s*%/)).toBeInTheDocument();
+    // Dogfood follow-up #7: the count line says "annotated", not
+    // "fields reviewed", so it stops colliding with "% with field evidence".
+    expect(within(ev).getByText(/annotated/i)).toBeInTheDocument();
+    expect(
+      within(ev).queryByText(/fields reviewed/i),
+    ).not.toBeInTheDocument();
   });
 
   it("renders schema maturity using translated status, never raw slug", async () => {

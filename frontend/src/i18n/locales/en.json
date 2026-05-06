@@ -19,6 +19,7 @@
     "pointer_empty": "Not yet published",
     "diff_section": "Contract diff",
     "diff_breaking_warning": "Activating this version will break existing integrators. Coordinate before publishing.",
+    "diff_initial_callout": "Initial contract — no prior version to break.",
     "diff_breaking_label": "Breaking",
     "diff_non_breaking_label": "Non-breaking",
     "diff_empty": "No schema differences between Production and Lab.",
@@ -156,19 +157,20 @@
       "uncertain": "Uncertain",
       "needs_review": "Needs review"
     },
-    "report_wrong": {
-      "trigger_aria": "Report this field as wrong",
-      "dialog_title": "Report wrong field",
-      "dialog_hint": "This saves a Lab correction (Annotation). Production integrators send the same JSON shape via /extract/{api_code}/feedback.",
-      "entity_index_label": "Entity index",
-      "field_path_label": "Field path",
-      "current_value_label": "Current value",
-      "corrected_value_label": "Corrected value",
-      "show_equivalent": "What integrators would send",
-      "save_button": "Save",
+    "flag": {
+      "trigger_aria": "More actions for {{field}}",
+      "dialog_title": "Flag this field",
+      "dialog_hint": "Save a Lab annotation flagging this field without changing its value. Editing the textbox above is the way to correct a value; use this for issues that aren't a value-fix (e.g. unparseable output, field doesn't apply).",
+      "issue_type_label": "Issue type",
+      "comment_label": "Comment (optional)",
       "cancel_button": "Cancel",
-      "errors": {
-        "no_prediction": "Cannot report — this document has no prediction yet."
+      "flag_button": "Flag",
+      "issue_type": {
+        "wrong_value": "Wrong value",
+        "missing_field": "Missing / N/A",
+        "extra_field": "Extra field",
+        "wrong_entity_count": "Wrong entity count",
+        "other": "Other"
       }
     }
   },
@@ -239,7 +241,7 @@
     "quality_no_signal": "Awaiting first verdict",
     "quality_meta": "{{obs}} obs · vibe-check {{vibe}}",
     "evidence_label": "Evidence",
-    "evidence_value": "{{docs}} docs · {{entities}} entities · {{fields}} fields reviewed",
+    "evidence_value": "{{docs}} docs · {{entities}} entities · {{fields}} annotated",
     "evidence_coverage": "{{ratio}}% with field evidence",
     "maturity_label": "Schema",
     "maturity_breaking_changes": "{{count}} breaking changes recorded",

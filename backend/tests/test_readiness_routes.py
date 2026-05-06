@@ -81,10 +81,15 @@ async def test_readiness_counts_human_review_coverage(client, db_session):
     res = await client.get(f"/api/v1/projects/{pid}/readiness", headers=h)
     assert res.status_code == 200, res.text
     coverage = res.json()["evidence_coverage"]
-    assert coverage["reviewed_docs"] >= 1
-    assert coverage["reviewed_entities"] >= 1
-    assert coverage["reviewed_fields"] >= 2
+    assert coverage["annotated_docs"] >= 1
+    assert coverage["annotated_entities"] >= 1
+    assert coverage["annotated_fields"] >= 2
     assert coverage["field_evidence_fields"] >= 1
+    # Old key names must be gone — disambiguating "annotated" from "with
+    # field evidence" is the whole point of dogfood follow-up #7.
+    assert "reviewed_docs" not in coverage
+    assert "reviewed_entities" not in coverage
+    assert "reviewed_fields" not in coverage
 
 
 @pytest.mark.asyncio

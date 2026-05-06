@@ -1,13 +1,12 @@
-import { Flag } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
 import { useParams } from "react-router-dom";
 
 import {
   ConfidenceChip,
   FieldEvidencePopover,
 } from "@/components/FieldEvidencePopover";
+import { FlagFieldMenu } from "@/components/FlagFieldMenu";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
-import { ReportWrongFieldDialog } from "@/components/ReportWrongFieldDialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/i18n/useT";
@@ -181,9 +180,9 @@ function FieldRow({
   evidenceMap: PerFieldEvidence | null | undefined;
   onChange: (next: string) => void;
 }) {
-  const t = useT();
+  // Dogfood follow-up #3: editing the textbox IS the correction; the
+  // ⋮ menu only handles flag-without-correcting (e.g. unparseable, N/A).
   const labelId = useId();
-  const [reportOpen, setReportOpen] = useState(false);
   const display =
     value === null || value === undefined
       ? ""
@@ -203,30 +202,17 @@ function FieldRow({
           fieldName={fieldName}
           evidenceMap={evidenceMap}
         />
-        <button
-          type="button"
-          aria-label={t("studio.report_wrong.trigger_aria")}
-          onClick={() => setReportOpen(true)}
-          className="text-fg-muted hover:text-fg-primary"
-        >
-          <Flag size={14} />
-        </button>
+        <FlagFieldMenu
+          projectId={projectId}
+          entityIndex={entityIndex}
+          fieldName={fieldName}
+        />
       </div>
       <Input
         aria-labelledby={labelId}
         value={display}
         onChange={(e) => onChange(e.target.value)}
       />
-      {reportOpen ? (
-        <ReportWrongFieldDialog
-          open={reportOpen}
-          onOpenChange={setReportOpen}
-          entityIndex={entityIndex}
-          fieldName={fieldName}
-          currentValue={value}
-          projectId={projectId}
-        />
-      ) : null}
     </div>
   );
 }

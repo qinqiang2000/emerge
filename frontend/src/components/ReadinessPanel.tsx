@@ -155,9 +155,9 @@ function EvidenceRow({ e }: { e: EvidenceCoverage }) {
       <dd className="text-fg-primary">
         <span>
           {t("readiness.evidence_value", {
-            docs: e.reviewed_docs,
-            entities: e.reviewed_entities,
-            fields: e.reviewed_fields,
+            docs: e.annotated_docs,
+            entities: e.annotated_entities,
+            fields: e.annotated_fields,
           })}
         </span>{" "}
         <span className="text-xs text-fg-muted">

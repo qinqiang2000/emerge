@@ -429,12 +429,22 @@ function VersionPointerCard({
 function ContractDiffSection({ diff }: { diff: ContractDiff | null }) {
   const t = useT();
   if (!diff) return null;
+  // Dogfood follow-up #6: a null prior_published_version_id means this is
+  // the first publish — every "required_field_added" is technically
+  // breaking against the empty prior, but it's noise dressed as alarms.
+  // Tone the section to informational without hiding the field list.
+  const isInitial =
+    diff.from_version_id === null || diff.from_version_id === undefined;
   return (
     <section className="space-y-2 rounded-md border border-border-default bg-bg-elevated p-4">
       <h2 className="text-sm font-semibold text-fg-primary">
         {t("api_console.diff_section")}
       </h2>
-      {diff.has_breaking_changes ? (
+      {isInitial ? (
+        <p className="text-sm text-fg-muted">
+          {t("api_console.diff_initial_callout")}
+        </p>
+      ) : diff.has_breaking_changes ? (
         <p className="text-sm text-status-error">
           {t("api_console.diff_breaking_warning")}
         </p>
@@ -445,7 +455,15 @@ function ContractDiffSection({ diff }: { diff: ContractDiff | null }) {
         <ul className="space-y-1">
           {diff.items.map((item, i) => (
             <li key={i} className="flex items-center gap-2 text-sm">
-              <Badge tone={item.severity === "breaking" ? "error" : "success"}>
+              <Badge
+                tone={
+                  isInitial
+                    ? "muted"
+                    : item.severity === "breaking"
+                    ? "error"
+                    : "success"
+                }
+              >
                 {item.severity === "breaking"
                   ? t("api_console.diff_breaking_label")
                   : t("api_console.diff_non_breaking_label")}

@@ -19,16 +19,16 @@ const READINESS_STUB: APIReadinessOut = {
     vibe_check_size: 0,
   },
   evidence_coverage: {
-    reviewed_docs: 0,
-    reviewed_entities: 0,
-    reviewed_fields: 0,
+    annotated_docs: 0,
+    annotated_entities: 0,
+    annotated_fields: 0,
     field_evidence_fields: 0,
     field_evidence_coverage_ratio: 0,
   },
   schema_maturity: {
     status: "draft",
-    reviewed_docs: 0,
-    reviewed_entities: 0,
+    annotated_docs: 0,
+    annotated_entities: 0,
     recent_schema_breaking_changes: 0,
     message: "",
   },
@@ -169,6 +169,49 @@ describe("ApiConsolePage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/description changed for 'total'/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Contract diff swaps to initial-publish copy when from_version_id is null", async () => {
+    // Dogfood follow-up #6: a first publish has no prior version, so
+    // "Activating this version will break existing integrators" is noise.
+    vi.spyOn(api, "get").mockImplementation((url: string) => {
+      if (url.endsWith("/readiness"))
+        return Promise.resolve({ data: READINESS_STUB });
+      if (url.endsWith("/versions"))
+        return Promise.resolve({ data: VERSIONS });
+      if (url.endsWith("/api-keys"))
+        return Promise.resolve({ data: KEYS });
+      if (url.endsWith("/contract-diff") || url.includes("/contract-diff?"))
+        return Promise.resolve({
+          data: {
+            from_version_id: null,
+            to_version_id: 7,
+            // Items are technically "breaking" against an empty prior, but
+            // for an initial publish that's noise dressed as alarms.
+            has_breaking_changes: true,
+            items: [
+              {
+                kind: "required_field_added",
+                severity: "breaking",
+                field_name: "shop_name",
+                before: null,
+                after: { name: "shop_name", type: "string" },
+                message: "required field 'shop_name' added",
+              },
+            ],
+          },
+        });
+      return Promise.resolve({ data: PROJECT });
+    });
+
+    renderConsole();
+    await settle();
+    expect(
+      screen.queryByText(/will break existing integrators/i),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/initial contract — no prior version/i),
     ).toBeInTheDocument();
   });
 

@@ -59,11 +59,18 @@ type StudioState = {
   load: (projectId: number, documentId: number) => Promise<void>;
   setDraft: (next: EntityOutput[]) => void;
   save: (projectId: number) => Promise<void>;
-  reportWrong: (args: {
+  // Dogfood follow-up #3: flag-without-correcting. Editing the textbox is
+  // the value-correction path; this exists for fields where the issue
+  // isn't a value (unparseable output, field doesn't apply). Saves an
+  // Annotation with the prediction's output unchanged and the issue_type
+  // encoded in `notes` (mirrors public_feedback's `[partial_feedback]=`
+  // notes suffix — same concept on the Lab side).
+  flagField: (args: {
     projectId: number;
     entityIndex: number;
     fieldName: string;
-    correctValue: unknown;
+    issueType: string;
+    comment?: string;
   }) => Promise<void>;
 };
 
@@ -117,30 +124,29 @@ export const useStudio = create<StudioState>((set, get) => ({
     }
   },
 
-  // Lab-side counterpart to the public partial-feedback contract: applies
-  // a single field correction client-side and POSTs as a regular
-  // Annotation. Lab MUST NOT call /extract/{api_code}/feedback — Lab uses
-  // session JWT, not X-Api-Key, and the auth model is different (spec §1
-  // and the R8.6 hard rules).
-  async reportWrong({ projectId, entityIndex, fieldName, correctValue }) {
+  async flagField({ projectId, entityIndex, fieldName, issueType, comment }) {
     const { doc } = get();
     if (doc === null) return;
+    // Save an Annotation with the prediction's output unchanged so the act
+    // of flagging covers the doc in the vibe-check pool the same way
+    // editing+saving does. Lab MUST NOT call /extract/{api_code}/feedback —
+    // Lab uses session JWT, not X-Api-Key (spec §1; R8.6 hard rules).
     const baseline =
       doc.latest_annotation?.output ?? doc.latest_prediction?.output ?? [];
-    if (entityIndex < 0 || entityIndex >= baseline.length) {
-      set({ error: "errors.VALIDATION_FAILED" });
-      return;
-    }
-    const merged = baseline.map((entity, i) =>
-      i === entityIndex ? { ...entity, [fieldName]: correctValue } : entity,
-    );
     set({ saving: true, error: null });
     try {
+      const tag = JSON.stringify({
+        issue_type: issueType,
+        entity_index: entityIndex,
+        field_name: fieldName,
+        comment: comment ?? null,
+      });
       await api.post(
         `/api/v1/projects/${projectId}/documents/${doc.id}/annotations`,
         {
-          output: merged,
+          output: baseline,
           parent_prediction_id: doc.latest_prediction?.id ?? null,
+          notes: `[lab_flag]=${tag}`,
         },
       );
       await get().load(projectId, doc.id);
