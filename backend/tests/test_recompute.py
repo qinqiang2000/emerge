@@ -304,6 +304,62 @@ async def test_vibe_check_includes_corrected_helper_branches(db_session):
 
 
 @pytest.mark.asyncio
+async def test_vibe_check_excludes_public_api_documents_in_both_branches(db_session):
+    """Spec §7.1 / dogfood follow-up #1: integrator-traffic Documents
+    (`source='public_api'`) must not enter the editor's vibe-check pool in
+    either branch — strict (with annotation cover) or relaxed
+    (`ignore_annotations=True`).
+    """
+    from app.models.document import DocumentSource
+
+    uid, pid, docs = await _setup_with_two_docs(db_session)
+    # Tag the second doc as integrator traffic.
+    public_doc = (
+        await db_session.execute(select(Document).where(Document.id == docs[1]))
+    ).scalar_one()
+    public_doc.source = DocumentSource.PUBLIC_API.value
+    await db_session.flush()
+
+    # Both docs have predictions so both meet the has_prediction filter.
+    for did in docs:
+        db_session.add(
+            Prediction(
+                document_id=did,
+                project_version_id=None,
+                model_id="m",
+                prompt_hash="h",
+                output=[{"a": 1}],
+                per_field_confidence={"0": {"a": "up"}},
+                status=PredictionStatus.SUCCESS.value,
+            )
+        )
+    await db_session.commit()
+
+    strict = [
+        row[0]
+        for row in (
+            await db_session.execute(vibe_check_predictions_query(pid))
+        ).all()
+    ]
+    assert set(strict) == {docs[0]}, (
+        "strict pool must drop public_api docs even with no covering annotation"
+    )
+
+    relaxed = [
+        row[0]
+        for row in (
+            await db_session.execute(
+                vibe_check_predictions_query(pid, ignore_annotations=True)
+            )
+        ).all()
+    ]
+    assert set(relaxed) == {docs[0]}, (
+        "relaxed pool must also drop public_api docs (the source filter is "
+        "independent of the annotation-coverage filter)"
+    )
+
+
+@pytest.mark.asyncio
 async def test_vibe_check_includes_corrected_when_active_version_unset(db_session):
     """Project without active_version_id — also safe-default True. Mirrors the
     practical case where a project is created but no schema has been authored

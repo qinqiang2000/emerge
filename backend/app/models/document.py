@@ -46,5 +46,4 @@ class Document(Base, TimestampMixin):
         String(16),
         nullable=False,
         default=DocumentSource.LAB.value,
-        index=True,
     )
