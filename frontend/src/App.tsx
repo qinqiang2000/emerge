@@ -1,9 +1,16 @@
 import { useEffect, type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useParams,
+} from "react-router-dom";
 
 import { ThemeToggle } from "./components/ThemeToggle";
 import { ApiConsolePage } from "./pages/ApiConsole";
 import { DocumentListPage } from "./pages/DocumentList";
+import { ImproveExtractorPage } from "./pages/ImproveExtractor";
 import { ProjectCreatePage } from "./pages/ProjectCreate";
 import { ProjectListPage } from "./pages/ProjectList";
 import { ReviewInboxPage } from "./pages/ReviewInbox";
@@ -17,6 +24,11 @@ import { ThemeProvider } from "./theme/ThemeProvider";
 function AuthGate({ children }: { children: ReactNode }) {
   const token = useAuth((s) => s.token);
   return token ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function ProjectRedirect({ to }: { to: "examples" | "rules" | "api" }) {
+  const params = useParams<{ id: string }>();
+  return <Navigate to={`/projects/${params.id}/${to}`} replace />;
 }
 
 export default function App() {
@@ -68,18 +80,10 @@ export default function App() {
               }
             />
             <Route
-              path="/projects/:id/schema"
+              path="/projects/:id/examples"
               element={
                 <AuthGate>
-                  <SchemaEditorPage />
-                </AuthGate>
-              }
-            />
-            <Route
-              path="/projects/:id/api-console"
-              element={
-                <AuthGate>
-                  <ApiConsolePage />
+                  <ReviewInboxPage />
                 </AuthGate>
               }
             />
@@ -87,7 +91,47 @@ export default function App() {
               path="/projects/:id/review"
               element={
                 <AuthGate>
-                  <ReviewInboxPage />
+                  <ProjectRedirect to="examples" />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/rules"
+              element={
+                <AuthGate>
+                  <SchemaEditorPage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/schema"
+              element={
+                <AuthGate>
+                  <ProjectRedirect to="rules" />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/api"
+              element={
+                <AuthGate>
+                  <ApiConsolePage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/api-console"
+              element={
+                <AuthGate>
+                  <ProjectRedirect to="api" />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/projects/:id/improve"
+              element={
+                <AuthGate>
+                  <ImproveExtractorPage />
                 </AuthGate>
               }
             />

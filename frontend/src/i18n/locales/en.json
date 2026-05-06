@@ -1,9 +1,9 @@
 {
   "nav": {
     "documents": "Documents",
-    "schema": "Schema",
-    "api": "API",
-    "review": "Review"
+    "review_examples": "Review examples",
+    "extraction_rules": "Extraction rules",
+    "api": "API"
   },
   "api_console": {
     "title": "API Console",

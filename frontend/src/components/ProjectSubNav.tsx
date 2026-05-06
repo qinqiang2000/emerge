@@ -5,12 +5,21 @@ import { cn } from "@/lib/cn";
 
 export function ProjectSubNav({ projectId }: { projectId: number }) {
   const t = useT();
-  // useMatch tolerates trailing slashes and nested children; pathname.endsWith
-  // would silently flip every tab to inactive on `/projects/7/api-console/`.
-  const onSchema = useMatch("/projects/:id/schema") !== null;
-  const onApi = useMatch("/projects/:id/api-console") !== null;
-  const onReview = useMatch("/projects/:id/review") !== null;
-  const onDocuments = !onSchema && !onApi && !onReview;
+  // Match explicit legacy aliases so redirected URLs still show the right tab
+  // while the navigation targets point at product-facing routes.
+  const onRules = useMatch("/projects/:id/rules") !== null;
+  const onLegacyRules = useMatch("/projects/:id/schema") !== null;
+  const onApi = useMatch("/projects/:id/api") !== null;
+  const onLegacyApi = useMatch("/projects/:id/api-console") !== null;
+  const onExamples = useMatch("/projects/:id/examples") !== null;
+  const onLegacyExamples = useMatch("/projects/:id/review") !== null;
+  const onDocuments =
+    !onRules &&
+    !onLegacyRules &&
+    !onApi &&
+    !onLegacyApi &&
+    !onExamples &&
+    !onLegacyExamples;
 
   return (
     <nav className="border-b border-border-default">
@@ -21,18 +30,18 @@ export function ProjectSubNav({ projectId }: { projectId: number }) {
           label={t("nav.documents")}
         />
         <NavTab
-          to={`/projects/${projectId}/review`}
-          active={onReview}
-          label={t("nav.review")}
+          to={`/projects/${projectId}/examples`}
+          active={onExamples || onLegacyExamples}
+          label={t("nav.review_examples")}
         />
         <NavTab
-          to={`/projects/${projectId}/schema`}
-          active={onSchema}
-          label={t("nav.schema")}
+          to={`/projects/${projectId}/rules`}
+          active={onRules || onLegacyRules}
+          label={t("nav.extraction_rules")}
         />
         <NavTab
-          to={`/projects/${projectId}/api-console`}
-          active={onApi}
+          to={`/projects/${projectId}/api`}
+          active={onApi || onLegacyApi}
           label={t("nav.api")}
         />
       </ul>
