@@ -93,6 +93,52 @@ async def test_readiness_counts_human_review_coverage(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_readiness_excludes_lab_flag_only_annotations(client, db_session):
+    """Mirror of test_lock_status_excludes_lab_flag_only_annotations: the
+    `[lab_flag]=` notes prefix marks flag-without-correction Annotations
+    that lock_status already excludes (CSE C2). Readiness must mirror that
+    rule — otherwise a user can ⋮-flag their way into "Schema ready to
+    lock" while the lock endpoint refuses, exactly the gaming surface C2
+    closed but on the parallel readout.
+    """
+    from app.models.annotation import Annotation, AnnotationRole, AnnotationStatus
+    from app.models.document import Document, DocumentStatus
+
+    h, pid = await _auth_and_project(client, "rdflag@rd.com")
+    doc = Document(
+        project_id=pid,
+        filename="r.pdf",
+        file_path="/tmp/r.pdf",
+        mime_type="application/pdf",
+        page_count=1,
+        byte_size=3,
+        uploaded_by=1,
+        status=DocumentStatus.EXTRACTED.value,
+    )
+    db_session.add(doc)
+    await db_session.flush()
+    db_session.add(
+        Annotation(
+            document_id=doc.id,
+            output=[{"total": 1234, "currency": "JPY"}],
+            role=AnnotationRole.NONE.value,
+            status=AnnotationStatus.SAVED.value,
+            created_by=1,
+            last_modified_by=1,
+            notes='[lab_flag]={"issue_type":"missing_field"}',
+        )
+    )
+    await db_session.commit()
+
+    res = await client.get(f"/api/v1/projects/{pid}/readiness", headers=h)
+    assert res.status_code == 200, res.text
+    coverage = res.json()["evidence_coverage"]
+    assert coverage["annotated_docs"] == 0
+    assert coverage["annotated_entities"] == 0
+    assert coverage["annotated_fields"] == 0
+
+
+@pytest.mark.asyncio
 async def test_readiness_blocks_publish_without_active_version(client, db_session):
     from app.models.project import Project
 

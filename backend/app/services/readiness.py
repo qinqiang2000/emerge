@@ -7,7 +7,7 @@ as `no_production_feedback`, NOT 100% certainty.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engine.recompute import (
@@ -113,6 +113,16 @@ async def build_readiness(
                 Document.source == "lab",
                 Annotation.role == AnnotationRole.NONE.value,
                 Annotation.status == AnnotationStatus.SAVED.value,
+                # Mirror versions.lock_status (CSE C2): exclude flag-only
+                # rows whose `notes` carries `[lab_flag]={...}` — they are
+                # markers, not corrections, and must not drive the
+                # `lock_candidate` heuristic or the user-facing "Schema
+                # ready to lock" message. SQL `NULL NOT LIKE` evaluates to
+                # NULL, so notes IS NULL must be explicit.
+                or_(
+                    Annotation.notes.is_(None),
+                    ~Annotation.notes.like("[lab_flag]=%"),
+                ),
             )
         )
     ).scalars().all()

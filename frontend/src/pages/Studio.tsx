@@ -59,10 +59,10 @@ export function StudioPage() {
   async function handleSave() {
     // Dogfood follow-up #4: surface a "Saved" pill on success. The store's
     // `save` swallows network errors into `error` rather than throwing, so
-    // re-read the latest store state to decide whether to toast.
-    const beforeError = useStudio.getState().error;
+    // re-read the latest store state to decide whether to toast. `save`
+    // resets `error` to null on entry, so success means error is null.
     await save(projectId);
-    if (useStudio.getState().error === beforeError) {
+    if (useStudio.getState().error === null) {
       toast.show(t("common.saved"));
     }
   }

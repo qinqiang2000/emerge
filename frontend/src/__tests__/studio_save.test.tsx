@@ -146,6 +146,27 @@ describe("StudioPage minimal correction save", () => {
     expect(viewport.textContent ?? "").toMatch(/saved/i);
   });
 
+  it("Save success after a prior failure still surfaces the toast", async () => {
+    // Pre-seed a stale error to simulate a failed prior save still being
+    // present in the store. handleSave must not gate the success toast on
+    // "error stayed equal to its previous value" — `save` resets `error`
+    // to null on entry, so a successful retry has error === null.
+    useStudio.setState({ error: "errors.SOMETHING" });
+    vi.spyOn(api, "post").mockResolvedValue({ data: { id: 123 } });
+
+    renderStudio();
+    await settle();
+
+    fireEvent.change(screen.getByDisplayValue("100"), {
+      target: { value: "200" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save correction/i }));
+    await settle();
+
+    const viewport = await screen.findByTestId("toast-viewport");
+    expect(viewport.textContent ?? "").toMatch(/saved/i);
+  });
+
   it("disables Save when draft equals seeded baseline", async () => {
     renderStudio();
     await settle();
