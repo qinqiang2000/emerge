@@ -80,6 +80,12 @@ describe("StudioPage minimal correction save", () => {
     await settle();
     expect(screen.getByDisplayValue("100")).toBeInTheDocument();
     expect(screen.getByDisplayValue("JPY")).toBeInTheDocument();
+    expect(
+      screen.getByText(/correct values here to mark this document reviewed/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/production api changes only when you activate a version/i),
+    ).toBeInTheDocument();
   });
 
   it("seeds draft from latest_annotation when present (override)", async () => {

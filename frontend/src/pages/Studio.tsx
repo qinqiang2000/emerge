@@ -109,6 +109,9 @@ export function StudioPage() {
           <p className="text-xs text-fg-muted">
             {doc.mime_type} · {doc.status}
           </p>
+          <p className="mt-1 max-w-2xl text-xs text-fg-muted">
+            {t("studio.save_hint")}
+          </p>
         </div>
         <Button
           disabled={!dirty || saving}

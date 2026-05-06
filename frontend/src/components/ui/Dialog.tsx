@@ -8,12 +8,14 @@ export function Dialog({
   open,
   onOpenChange,
   title,
+  description,
   children,
   className,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  description?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
@@ -35,6 +37,11 @@ export function Dialog({
               <X size={18} />
             </RadixDialog.Close>
           </div>
+          {description ? (
+            <RadixDialog.Description className="mb-3 text-xs text-fg-muted">
+              {description}
+            </RadixDialog.Description>
+          ) : null}
           {children}
         </RadixDialog.Content>
       </RadixDialog.Portal>

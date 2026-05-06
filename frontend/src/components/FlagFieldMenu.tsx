@@ -1,4 +1,3 @@
-import { MoreVertical } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
@@ -47,20 +46,18 @@ export function FlagFieldMenu({
         type="button"
         aria-label={t("studio.flag.trigger_aria", { field: fieldName })}
         onClick={() => setOpen(true)}
-        className="text-fg-muted hover:text-fg-primary"
+        className="rounded-sm border border-border-default px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-muted hover:border-border-strong hover:text-fg-primary"
       >
-        <MoreVertical size={14} />
+        {t("studio.flag.trigger_label")}
       </button>
       {open ? (
         <Dialog
           open={open}
           onOpenChange={setOpen}
           title={t("studio.flag.dialog_title")}
+          description={t("studio.flag.dialog_hint")}
         >
           <div className="space-y-3 text-sm">
-            <p className="text-xs text-fg-muted">
-              {t("studio.flag.dialog_hint")}
-            </p>
             <label htmlFor={issueId} className="flex flex-col gap-1 text-xs">
               <span className="text-fg-muted">
                 {t("studio.flag.issue_type_label")}

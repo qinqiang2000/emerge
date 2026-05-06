@@ -125,7 +125,7 @@ test.describe("walking skeleton", () => {
       );
       // The field-row Input is aria-labelledby the field-name span — its
       // accessible name is exactly the field name. Scope by role so we
-      // skip sibling buttons (e.g. FlagFieldMenu's "More actions for {x}"
+      // skip sibling buttons (e.g. FlagFieldMenu's "Report issue for {x}"
       // trigger uses an aria-label that substring-matches the field name
       // and would otherwise be the first hit for getByLabel).
       const fieldInput = page

@@ -144,6 +144,7 @@
     "schema_editor": "Schema editor",
     "ask_researcher": "Ask researcher",
     "save_correction": "Save correction",
+    "save_hint": "Correct values here to mark this document reviewed. Production API changes only when you activate a version.",
     "loading": "Loading document…",
     "empty": "Document not loaded.",
     "no_entities": "No entities extracted yet.",
@@ -161,15 +162,16 @@
       "needs_review": "Needs review"
     },
     "flag": {
-      "trigger_aria": "More actions for {{field}}",
-      "dialog_title": "Flag this field",
-      "dialog_hint": "Save a Lab annotation flagging this field without changing its value. Editing the textbox above is the way to correct a value; use this for issues that aren't a value-fix (e.g. unparseable output, field doesn't apply).",
+      "trigger_label": "Report issue",
+      "trigger_aria": "Report issue for {{field}}",
+      "dialog_title": "Report issue",
+      "dialog_hint": "Use this only when editing the value is not the fix. It does not change this value, does not train the extractor, and does not count toward schema lock.",
       "issue_type_label": "Issue type",
       "comment_label": "Comment (optional)",
       "cancel_button": "Cancel",
-      "flag_button": "Flag",
+      "flag_button": "Report issue",
       "issue_type": {
-        "missing_field": "Missing / N/A",
+        "missing_field": "Field is missing or not applicable",
         "extra_field": "Extra field",
         "wrong_entity_count": "Wrong entity count",
         "other": "Other"

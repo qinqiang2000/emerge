@@ -48,13 +48,22 @@ afterEach(() => {
 });
 
 describe("FlagFieldMenu (dogfood follow-up #3)", () => {
-  it("opens via the ⋮ trigger and shows the issue_type select", () => {
+  it("opens as Report issue and explains the action does not correct or train", () => {
     render(
       <FlagFieldMenu projectId={9} entityIndex={0} fieldName="total" />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: /more actions for total/i }),
+      screen.getByRole("button", { name: /report issue for total/i }),
     );
+    expect(
+      screen.getByRole("heading", { name: /report issue/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not change this value/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not count toward schema lock/i),
+    ).toBeInTheDocument();
     expect(
       screen.getByLabelText(/issue type/i),
     ).toBeInTheDocument();
@@ -70,7 +79,7 @@ describe("FlagFieldMenu (dogfood follow-up #3)", () => {
       <FlagFieldMenu projectId={9} entityIndex={0} fieldName="total" />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: /more actions for total/i }),
+      screen.getByRole("button", { name: /report issue for total/i }),
     );
     const select = screen.getByLabelText(/issue type/i) as HTMLSelectElement;
     const optionValues = Array.from(select.options).map((o) => o.value);
@@ -89,12 +98,12 @@ describe("FlagFieldMenu (dogfood follow-up #3)", () => {
       <FlagFieldMenu projectId={9} entityIndex={0} fieldName="total" />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: /more actions for total/i }),
+      screen.getByRole("button", { name: /report issue for total/i }),
     );
     fireEvent.change(screen.getByLabelText(/issue type/i), {
       target: { value: "missing_field" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^flag$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^report issue$/i }));
 
     await waitFor(() => expect(post).toHaveBeenCalled());
     const [url, body] = post.mock.calls[0]!;

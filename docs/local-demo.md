@@ -88,9 +88,13 @@ npm run dev
    可能为空。
 3. **依次为两个文档打开 Studio。** 点击某一行 → 进入 `/projects/:id/studio/:did`。
    任选一个字段，修改它的值（例如纠正 OCR 识别错的店名），点击
-   `Save correction`。当 store 重新加载文档后，这个按钮会再次变为不可用
-   （annotation override 会被重新灌入输入框）。对第二个文档重复一遍，
-   选一个两个文档里都存在的稳定字段名——这两次纠正满足 lock 状态的前置条件。
+   `Save correction`。这只把当前文档标记为 reviewed，不会改变生产
+   `/extract/{api_code}`；生产只会在 API Console 显式 Activate version for API
+   后变化。当 store 重新加载文档后，这个按钮会再次变为不可用（annotation
+   override 会被重新灌入输入框）。对第二个文档重复一遍，选一个两个文档里
+   都存在的稳定字段名——这两次纠正满足 lock 状态的前置条件。
+4. 如果字段旁边显示 `Report issue`，只在“改值不是解决办法”时使用：
+   字段不适用、多余字段、实体数量错等。它不会改字段值，也不计入 lock 前置条件。
 
 ---
 

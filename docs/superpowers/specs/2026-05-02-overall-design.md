@@ -783,19 +783,19 @@ Click a row → enters **Studio** for that Document.
 +--------------------------------------+----------------------+
 ```
 
-Left: 60–70% width Document Preview. Renders PDFs (page-by-page scroll) and images. Pure viewer in v1: no overlays, no clickable hotspots, no bbox.
+Left: 60–70% width Document Preview. v1.0 may show a clear placeholder; real PDF/image preview is v1.1. When preview exists it is a pure viewer: no overlays, no clickable hotspots, no bbox.
 
 Right: entity-grouped field list. Each entity is a card; expandable / collapsible. Each field row supports:
-- inline value edit
+- inline value edit. This is the only "correct this value" path.
 - field deletion
-- per-field "report wrong" (sets a flag on the field that informs readiness / risky-field weighting)
+- **Report issue** for non-value problems only (field not applicable, extra field, wrong entity count, other). It saves a Lab-side issue marker without changing the value and does not count toward schema lock/readiness correction thresholds.
 - **Evidence** popover: page / quote / rationale from `Prediction.per_field_evidence`; no bbox overlay or visual region selection
-- **Teach model** action: opens inline description patch proposal for this field, not a hidden automatic prompt change
+- **Teach model** action: only if implemented as an explicit description patch proposal for this field. No hidden automatic prompt change.
 
 Bottom buttons:
 - **Schema editor** — 滑出一个 panel，**双模式**（见 §8.4）。这是 emerge 的核心编辑面，所有"教模型"的工作发生在这里。
 - **Ask researcher** — chat input。自由文字 "this batch is missing tax field"、"currency should always be ISO code"。提交触发 AutoResearch run，把用户的文字注入 diagnosis prompt。
-- **Save correction** — 持久化当前 Annotation, role=none。
+- **Save correction** — 持久化当前 JSON as reviewed Annotation, role=none。文案必须明确：保存纠正不会自动改变生产 API；只有 API Console 里显式 Activate version for API 才会改变 `/extract/{api_code}`。
 
 ### 8.3 Schema editor — 双模式（form + chat）
 
