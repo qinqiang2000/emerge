@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiKeyRevealModal } from "@/components/ApiKeyRevealModal";
+import { ConfirmRevokeKeyDialog } from "@/components/ConfirmRevokeKeyDialog";
 import { FeedbackTestForm } from "@/components/FeedbackTestForm";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { ReadinessPanel } from "@/components/ReadinessPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/Table";
 import { useT } from "@/i18n/useT";
 import {
@@ -45,6 +47,15 @@ export function ApiConsolePage() {
   const [rollbackTarget, setRollbackTarget] = useState<string>("");
   const [revealedKey, setRevealedKey] = useState<ApiKeyOnce | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Dogfood follow-up #5: Revoke is destructive with no recall path —
+  // gate behind a confirmation. Holding the {id, name} pair so the
+  // dialog can interpolate the key name into the warning copy.
+  const [pendingRevoke, setPendingRevoke] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+
+  const toast = useToast();
 
   useEffect(() => {
     if (!Number.isFinite(projectId)) return;
@@ -107,6 +118,7 @@ export function ApiConsolePage() {
         activateApiCode,
         project.active_version_id ?? undefined,
       );
+      toast.show(t("common.saved"));
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -140,6 +152,7 @@ export function ApiConsolePage() {
     setActionError(null);
     try {
       await unpublish(projectId);
+      toast.show(t("common.saved"));
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -155,10 +168,13 @@ export function ApiConsolePage() {
     }
   }
 
-  async function handleRevoke(keyId: number) {
+  async function confirmRevoke() {
+    if (pendingRevoke === null) return;
     setActionError(null);
     try {
-      await revokeKey(projectId, keyId);
+      await revokeKey(projectId, pendingRevoke.id);
+      toast.show(t("common.saved"));
+      setPendingRevoke(null);
     } catch (e) {
       setActionError(emergeMessage(e));
     }
@@ -340,7 +356,9 @@ export function ApiConsolePage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void handleRevoke(k.id)}
+                        onClick={() =>
+                          setPendingRevoke({ id: k.id, name: k.name })
+                        }
                       >
                         {t("api_console.revoke_button")}
                       </Button>
@@ -365,6 +383,17 @@ export function ApiConsolePage() {
           open
           apiKey={revealedKey}
           onConfirmDismiss={() => setRevealedKey(null)}
+        />
+      ) : null}
+
+      {pendingRevoke ? (
+        <ConfirmRevokeKeyDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPendingRevoke(null);
+          }}
+          keyName={pendingRevoke.name}
+          onConfirm={() => void confirmRevoke()}
         />
       ) : null}
     </>

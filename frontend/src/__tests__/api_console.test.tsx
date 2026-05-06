@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ToastProvider } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { ApiConsolePage } from "@/pages/ApiConsole";
 import { useProjects, type Project } from "@/stores/projects";
@@ -74,11 +75,13 @@ const KEYS = [
 
 function renderConsole() {
   return render(
-    <MemoryRouter initialEntries={["/projects/1/api-console"]}>
-      <Routes>
-        <Route path="/projects/:id/api-console" element={<ApiConsolePage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={["/projects/1/api-console"]}>
+        <Routes>
+          <Route path="/projects/:id/api-console" element={<ApiConsolePage />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -262,8 +265,12 @@ describe("ApiConsolePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("Revoke removes the key row from the table", async () => {
-    vi.spyOn(api, "delete").mockResolvedValue({
+  it("Revoke now requires a confirmation click and removes the row + shows toast", async () => {
+    // Dogfood follow-up #5: clicking the row's Revoke button must NOT
+    // delete the key directly; it opens a Radix Dialog with the key name
+    // interpolated. Only after clicking the dialog's primary "Revoke"
+    // button should the network DELETE fire and the row disappear.
+    const del = vi.spyOn(api, "delete").mockResolvedValue({
       data: { ...KEYS[0]! },
     });
 
@@ -271,10 +278,29 @@ describe("ApiConsolePage", () => {
     await settle();
     expect(await screen.findByText("ek_abc")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /revoke/i }));
+    // Open the confirmation dialog.
+    fireEvent.click(
+      screen.getByRole("button", { name: /^revoke$/i }),
+    );
+    // Dialog body must interpolate the key name (KEYS[0].name === "default").
+    expect(
+      await screen.findByText(/revoke key 'default'/i),
+    ).toBeInTheDocument();
+    expect(del).not.toHaveBeenCalled();
+
+    // Click the dialog's primary Revoke button (now there are two; pick the
+    // second which is inside the dialog).
+    const revokeButtons = screen.getAllByRole("button", { name: /^revoke$/i });
+    const dialogRevoke = revokeButtons[revokeButtons.length - 1]!;
+    fireEvent.click(dialogRevoke);
+
     await waitFor(() =>
       expect(screen.queryByText("ek_abc")).not.toBeInTheDocument(),
     );
+    expect(del).toHaveBeenCalled();
+
+    const viewport = await screen.findByTestId("toast-viewport");
+    expect(viewport.textContent ?? "").toMatch(/saved/i);
   });
 
   it("renders the read-only feedback example block on every load", async () => {

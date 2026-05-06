@@ -27,7 +27,7 @@ Carry-forward list of deferred fixups surfaced during R8.0–R8.2 gate reviews a
 | 10 | gate-review (R8.1.d) | `pages/Studio.tsx:154` | `<label>` wraps `<Input>` without explicit `htmlFor`/`id` for a11y. |
 | 11 | gate-review (R8.1.d), smoke | `pages/Studio.tsx` field rendering | **JSON.stringify type-coercion**: number `100` becomes string `"100"`, boolean `true` becomes `"true"` on save. R8.5 evidence-aware editor naturally fixes; track explicitly so v1 GA does not ship lossy mode. |
 | 12 | gate-review (R8.1.d) | `pages/Studio.tsx:14` ↔ `stores/studio.ts:51` | `baselineOutput()` duplicates `seedDraft()`. Export `seedDraft` from store and reuse. |
-| 13 | gate-review (R8.1.d), smoke | `pages/Studio.tsx`, ApiConsole | No save-success toast on Studio / Activate / Unpublish / Revoke. MVP fine; add a small `useToast` hook later. |
+| ~~13~~ | gate-review (R8.1.d), smoke | `pages/Studio.tsx`, ApiConsole | ~~No save-success toast on Studio / Activate / Unpublish / Revoke. MVP fine; add a small `useToast` hook later.~~ Resolved by dogfood follow-up commit C (`feat(ui): toast on save + Revoke confirmation`); `components/ui/Toast.tsx` is the new `useToast` hook. |
 | 14 | gate-review | cross-cutting | Optional `renderErrorKey(t, errKey)` helper for symmetry with future toasts. |
 | 15 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx` | Save POSTs even with no diff → no-op `version_number` bump on backend. Add dirty-check modeled on Studio. |
 | 16 | gate-review (R8.1.e) | `pages/SchemaEditor.tsx:41-44` | Sync useEffect on `active` may overwrite in-flight local edits. Guard with `JSON.stringify` equality. |

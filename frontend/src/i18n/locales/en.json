@@ -50,6 +50,9 @@
     "key_created_col": "Created",
     "key_actions_col": "Actions",
     "revoke_button": "Revoke",
+    "revoke_dialog_title": "Revoke API key",
+    "revoke_dialog_body": "Revoke key '{{name}}'? Integrators using this key will start getting 403 immediately.",
+    "revoke_dialog_confirm": "Revoke",
     "snippets_section": "Snippets",
     "snippets_hint": "Replace EMERGE_API_KEY with your secrets-manager value. The API key is shown once on creation.",
     "feedback_example_title": "Partial feedback example",
@@ -295,6 +298,7 @@
     "loading": "Loading…",
     "yes": "Yes",
     "no": "No",
-    "copy": "Copy"
+    "copy": "Copy",
+    "saved": "Saved"
   }
 }

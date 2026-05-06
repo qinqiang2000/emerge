@@ -9,6 +9,7 @@ import { FlagFieldMenu } from "@/components/FlagFieldMenu";
 import { ProjectSubNav } from "@/components/ProjectSubNav";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 import { useT } from "@/i18n/useT";
 import {
   useStudio,
@@ -45,6 +46,7 @@ export function StudioPage() {
   const load = useStudio((s) => s.load);
   const setDraft = useStudio((s) => s.setDraft);
   const save = useStudio((s) => s.save);
+  const toast = useToast();
 
   useEffect(() => {
     if (Number.isFinite(projectId) && Number.isFinite(documentId)) {
@@ -53,6 +55,17 @@ export function StudioPage() {
   }, [load, projectId, documentId]);
 
   const dirty = isDirty(draft, baselineOutput(doc));
+
+  async function handleSave() {
+    // Dogfood follow-up #4: surface a "Saved" pill on success. The store's
+    // `save` swallows network errors into `error` rather than throwing, so
+    // re-read the latest store state to decide whether to toast.
+    const beforeError = useStudio.getState().error;
+    await save(projectId);
+    if (useStudio.getState().error === beforeError) {
+      toast.show(t("common.saved"));
+    }
+  }
 
   function updateField(entityIdx: number, key: string, value: string) {
     const next = draft.map((entity, i) =>
@@ -99,7 +112,7 @@ export function StudioPage() {
         </div>
         <Button
           disabled={!dirty || saving}
-          onClick={() => void save(projectId)}
+          onClick={() => void handleSave()}
         >
           {saving ? t("common.loading") : t("studio.save_correction")}
         </Button>
