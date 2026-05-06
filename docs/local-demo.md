@@ -1,46 +1,44 @@
-# Local demo walkthrough
+# 本地演示流程
 
-> Documents in. APIs emerge. They get better as you correct them.
+> 文档进入，API 随之出现。你纠正得越多，它们会变得越好。
 
-A 10-minute scripted walk through the R8 Productization MVP on a fresh laptop.
-Mirrors the automated `frontend/e2e/walking_skeleton.spec.ts` — if anything
-diverges, the spec is authoritative.
+一份 10 分钟的脚本化演示，面向一台全新的笔记本，展示 R8 Productization MVP。
+内容与自动化测试 `frontend/e2e/walking_skeleton.spec.ts` 保持一致。如果有任何不一致，
+以测试用例为准。
 
-This doc never prints, requests, or assumes any real secret value:
-- Provider keys (`GOOGLE_API_KEY`, `OPENAI_API_KEY`) live only in `backend/.env`.
-- The freshly-revealed API key is referenced as the placeholder `EMERGE_API_KEY`
-  throughout. When you copy it from the one-time reveal modal, paste it into a
-  terminal as `export EMERGE_API_KEY=...` for that shell only — do **not** write
-  it to a checked-in file.
-- JWTs land in browser `localStorage` (`emerge.token`); never paste them into
-  any doc, log, ticket, or chat.
+这份文档不会打印、请求或假定任何真实密钥值：
+- 提供方密钥（`GOOGLE_API_KEY`、`OPENAI_API_KEY`）只保存在 `backend/.env` 中。
+- 新生成并首次揭示的 API key 在全文中统一用占位符 `EMERGE_API_KEY` 表示。
+  你从一次性揭示弹窗中复制出来后，只在当前终端里执行
+  `export EMERGE_API_KEY=...`，不要写入任何已提交文件。
+- JWT 会落到浏览器的 `localStorage`（`emerge.token`）里；不要把它们贴到
+  任何文档、日志、工单或聊天中。
 
 ---
 
-## 0. Prerequisites
+## 0. 前置条件
 
-- macOS or Linux, Python 3.11+, Node 20+, `uv` installed (`brew install uv`).
-- A provider key: either `GOOGLE_API_KEY` (Gemini) or `OPENAI_API_KEY`. The
-  defaults assume Gemini; runtime extraction and the AutoResearch / judge
-  path use whatever `default_model_gemini` and `default_model_pro` are set
-  to in `backend/app/settings.py` (separate tiers per the model-tier-split
-  memory note in `CLAUDE.md`).
-- If your network needs an outbound proxy for the provider, export
-  `https_proxy` / `http_proxy` in the shell that runs the backend (the spec
-  found `httpx.ConnectError` failures silent in the DB without proxy env).
+- macOS 或 Linux，Python 3.11+，Node 20+，已安装 `uv`（`brew install uv`）。
+- 一个提供方密钥：`GOOGLE_API_KEY`（Gemini）或 `OPENAI_API_KEY` 二选一。
+  默认假设使用 Gemini；运行时抽取以及 AutoResearch / judge 路径会使用
+  `backend/app/settings.py` 中配置的 `default_model_gemini` 和 `default_model_pro`
+  （按模型层级拆分，参见 `CLAUDE.md` 中的模型层级拆分记忆说明）。
+- 如果你的网络访问提供方需要出站代理，请在运行后端的 shell 中导出
+  `https_proxy` / `http_proxy`（测试发现，如果没有代理环境变量，`httpx.ConnectError`
+  会静默地留在数据库里）。
 
 ```bash
-# backend/.env (gitignored). Do not commit.
-GOOGLE_API_KEY=...           # placeholder; paste your key here
+# backend/.env（已被 gitignore）。不要提交。
+GOOGLE_API_KEY=...           # 占位符；把你的 key 粘贴到这里
 DEFAULT_PROVIDER=gemini
 ```
 
 ---
 
-## 1. Boot the stack
+## 1. 启动整套服务
 
-Three shells. Backend on :8000, frontend on :5173, a third for any curl
-checks. Snippets below assume you're at the repo root.
+需要三个 shell。后端运行在 :8000，前端运行在 :5173，第三个 shell 用来执行
+任意 curl 检查。下面的命令默认你位于仓库根目录。
 
 ```bash
 # shell 1 — backend
@@ -58,95 +56,87 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173> → you should land on `/login`.
+打开 <http://localhost:5173>，你应该会进入 `/login`。
 
 ---
 
-## 2. Register and create the first project
+## 2. 注册并创建第一个项目
 
-1. **Register** with any email + password (`demo@example.com` /
-   `hunter22-local-demo` is fine for a throwaway DB). After register you land
-   on `/projects` (empty list).
-2. **New project** → choose the `japan_receipt` builtin template
-   (non-empty schema; spec §1 walking-path default). Name it anything,
-   e.g. `demo-receipts`. Submit → you land on `/projects/:id`, which shows:
-   - `API Readiness` panel at the top (blockers visible:
-     `active_version_unlocked`, `empty_schema` clears once schema is set,
-     `schema_not_lock_candidate` clears once you have stable annotations).
-   - `Review Inbox` banner ("0 need review · 0 spot-checks · 0 docs total"
-     because the vibe-check pool is empty until extract + judge has run).
-   - `Documents` table with empty state.
-
----
-
-## 3. Upload, extract, and correct
-
-1. **Upload three PDFs.** Two will get corrected; the third stays uncorrected
-   so the vibe-check pool (spec §4.1) stays non-empty after lock. Any short
-   receipt PDF works; a sample is bundled at
-   `frontend/e2e/fixtures/sample.pdf`. After upload each row reads
-   `uploaded`.
-2. **Re-extract remaining** — top of the table. Rows transition to `extracted`
-   over ~10–60 s per doc (cold provider; warm Gemini ~3–5 s/doc). If a row
-   sticks at `errored`, check the backend log for `httpx.ConnectError`
-   (proxy / DNS) — the prediction's `error_message` may be empty due to
-   hygiene-tail item #52.
-3. **Open Studio for two docs in sequence.** Click a row → land on
-   `/projects/:id/studio/:did`. Pick any one field, change its value (e.g.
-   correct an OCR'd shop name), click `Save correction`. The button
-   re-disables once the store reloads the doc (annotation override seeded
-   back into the input). Repeat for a second doc with a stable field name
-   present in both — those two corrections satisfy the lock-status precondition.
+1. **注册** 任意邮箱 + 密码（`demo@example.com` / `hunter22-local-demo`
+   适合临时数据库）。注册后会进入 `/projects`（空列表）。
+2. **New project** → 选择内置模板 `japan_receipt`
+   （非空 schema；对应 spec §1 的默认演示路径）。名字随意，比如 `demo-receipts`。
+   提交后会进入 `/projects/:id`，页面上会显示：
+   - 顶部的 `API Readiness` 面板（可见阻塞项：
+     `active_version_unlocked`，`empty_schema` 在 schema 设置后清除，
+     `schema_not_lock_candidate` 在你拿到稳定标注后清除）。
+   - `Review Inbox` 横幅（显示“0 need review · 0 spot-checks · 0 docs total”
+     ，因为在 extract + judge 跑完之前，vibe-check 池是空的）。
+   - `Documents` 表格为空状态。
 
 ---
 
-## 4. Lock the schema
+## 3. 上传、抽取并纠正
 
-1. Go to `/projects/:id/schema` → form mode.
-2. The lock-status helper line should now read "ready to lock" (≥2 saved
-   corrections with at least one stable field). If the button is still
-   disabled, save a third correction.
-3. **Lock** → schema is now an immutable ProjectVersion candidate for
-   publishing. The `/projects/:id/review` page's Draft callout disappears
-   from this point on (corrected docs leave the vibe-check pool — spec §4.1
-   lifecycle).
+1. **上传三个 PDF。** 其中两个会被纠正；第三个保持未纠正，这样在 lock 之后
+   vibe-check 池（spec §4.1）仍然非空。任意短收据 PDF 都可以；示例文件在
+   `frontend/e2e/fixtures/sample.pdf`。上传后每一行都显示 `uploaded`。
+2. **Re-extract remaining** — 表格顶部按钮。每个文档会在约 10–60 秒内切换到
+   `extracted`（冷启动提供方；Gemini 热身后大约 3–5 秒/文档）。
+   如果某一行卡在 `errored`，检查后端日志里是否有 `httpx.ConnectError`
+   （代理 / DNS 问题）——由于 hygiene-tail item #52，prediction 的 `error_message`
+   可能为空。
+3. **依次为两个文档打开 Studio。** 点击某一行 → 进入 `/projects/:id/studio/:did`。
+   任选一个字段，修改它的值（例如纠正 OCR 识别错的店名），点击
+   `Save correction`。当 store 重新加载文档后，这个按钮会再次变为不可用
+   （annotation override 会被重新灌入输入框）。对第二个文档重复一遍，
+   选一个两个文档里都存在的稳定字段名——这两次纠正满足 lock 状态的前置条件。
 
 ---
 
-## 5. API Console — Activate, key reveal, public extract
+## 4. 锁定 schema
 
-1. Go to `/projects/:id/api-console`.
-2. **Production API version** card → set the `api_code` (a URL slug like
-   `demo-receipts-v1`) → **Activate for API**. The Production pointer flips
-   to your locked version. The Lab pointer is unchanged — that's the spec
-   §7.2 invariant.
-3. **Create key** → name it (e.g. `default`) → modal pops with the plaintext
-   key. Click Copy, ack the "save it in your secrets manager" checkbox, then
-   Done. **The plaintext is shown exactly once.** After dismiss/reload only
-   the prefix is visible.
-4. In a terminal:
+1. 进入 `/projects/:id/schema` → form mode。
+2. lock-status 辅助行此时应显示 “ready to lock”
+   （至少 2 次已保存纠正，且至少有一个稳定字段）。
+   如果按钮仍然禁用，再保存第三次纠正。
+3. **Lock** → schema 现在变成可发布的不可变 ProjectVersion 候选。
+   从这里开始，`/projects/:id/review` 页面的 Draft callout 会消失
+   （已纠正的文档会离开 vibe-check 池——见 spec §4.1 生命周期）。
+
+---
+
+## 5. API Console — 激活、密钥揭示、公开抽取
+
+1. 进入 `/projects/:id/api-console`。
+2. **Production API version** 卡片 → 设置 `api_code`
+   （类似 `demo-receipts-v1` 的 URL slug）→ **Activate for API**。
+   Production 指针会切换到你锁定后的版本。Lab 指针保持不变——这是 spec §7.2 的不变量。
+3. **Create key** → 输入名称（例如 `default`）→ 弹窗会显示明文 key。
+   点击 Copy，勾选“save it in your secrets manager”，然后点 Done。
+   **明文只显示一次。** 弹窗关闭或页面重载后，只能看到前缀。
+4. 在终端中执行：
 
    ```bash
-   export EMERGE_API_KEY=...    # paste from the modal
+   export EMERGE_API_KEY=...    # 从弹窗里粘贴
    curl -X POST http://localhost:8000/extract/demo-receipts-v1 \
      -H "X-Api-Key: ${EMERGE_API_KEY}" \
      -F "file=@frontend/e2e/fixtures/sample.pdf"
    ```
 
-   Response is the public ExtractResponse: `{request_id, prediction_id,
-   project_version_id, output, ...}`. No JSON key contains plaintext key
-   material.
+   返回的是公开的 ExtractResponse：
+   `{request_id, prediction_id, project_version_id, output, ...}`。
+   任何 JSON 字段都不包含明文 key 材料。
 
 ---
 
-## 6. Public partial feedback → readiness updates
+## 6. 公开的部分反馈 → readiness 更新
 
-1. From the curl response above, capture `prediction_id` (the public field
-   name; integrators send this back as `request_id` in feedback to
-   correlate).
-2. Either curl, or use the API Console's **Send test feedback** form (gated
-   on having ≥1 key — the form keeps the pasted plaintext in component
-   state only, cleared on success and on unmount):
+1. 从上面的 curl 响应里取出 `prediction_id`
+   （公开字段名；集成方会把它作为 `request_id` 回传到反馈里做关联）。
+2. 可以直接 curl，也可以用 API Console 里的 **Send test feedback** 表单
+   （要求至少有 1 个 key；表单会把粘贴的明文仅保留在组件状态中，
+   成功后以及组件卸载时都会清空）：
 
    ```bash
    curl -X POST http://localhost:8000/extract/demo-receipts-v1/feedback \
@@ -163,88 +153,88 @@ Open <http://localhost:5173> → you should land on `/login`.
      }'
    ```
 
-   Response includes `counterexample_id`. Reload `/projects/:id` →
-   `API Readiness` no longer says "No production feedback yet";
-   `regression_health.counterexamples_total ≥ 1`. The panel never shows
-   `100%` when `counterexamples_total === 0` — the no-feedback copy is
-   the only valid render in that branch (spec §7.4).
+   响应会包含 `counterexample_id`。刷新 `/projects/:id` →
+   `API Readiness` 不再显示 “No production feedback yet”；
+   `regression_health.counterexamples_total ≥ 1`。
+   当 `counterexamples_total === 0` 时，面板绝不会显示 `100%`——
+   “no-feedback” 文案是该分支唯一合法的渲染结果（spec §7.4）。
 
 ---
 
-## 7. Review Inbox — judge run materialises verdicts
+## 7. Review Inbox — judge 运行后产生 verdict
 
-`/projects/:id/review` shows three sections:
-- **Required review** — docs flagged `down` by the judge (from spec §4 vibe-check).
-- **Spot-check** — sampled `up_only` docs the judge agreed with.
-- **All** — every doc currently in the vibe-check pool.
+`/projects/:id/review` 会显示三个区块：
+- **Required review** — 被 judge 标记为 `down` 的文档（来自 spec §4 的 vibe-check）。
+- **Spot-check** — judge 认可的、被抽样为 `up_only` 的文档。
+- **All** — 当前 vibe-check 池中的所有文档。
 
-Until the judge runs, all three are empty (after lock — see §3 above for
-why uncorrected docs stay in the pool). Trigger one judge run from the
-terminal:
+在 judge 运行之前，这三个区块都为空（lock 之后——为什么未纠正的文档仍留在池里，
+见上面的 §3）。先从终端触发一次 judge run：
 
-1. In the browser, DevTools → Console → run
-   `copy(localStorage.getItem("emerge.token"))` (puts the JWT on the
-   clipboard without printing it).
-2. Paste it into a shell variable, then curl. Do **not** commit `JWT` to
-   any file.
+1. 在浏览器里打开 DevTools → Console，运行
+   `copy(localStorage.getItem("emerge.token"))`
+   （这会把 JWT 复制到剪贴板，而不会打印出来）。
+2. 把它粘贴到一个 shell 变量里，然后执行 curl。**不要**把 `JWT` 提交到任何文件。
 
 ```bash
-JWT=...   # paste from clipboard
+JWT=...   # 从剪贴板粘贴
 curl -X POST http://localhost:8000/api/v1/projects/<project_id>/judge \
   -H "Authorization: Bearer ${JWT}"
 ```
 
-After the judge returns, reload `/projects/:id/review` → at least the **All**
-section is non-empty (the uncorrected 3rd doc); whether **Required review**
-or **Spot-check** has rows depends on what the judge said about the
-predictions. The handoff records the live behaviour on a parking-receipt
-PDF: shop_name → `down` (required review), issue_date / total_amount →
-`up` (spot-check candidates).
+judge 返回后，刷新 `/projects/:id/review` →
+至少 **All** 区块会非空（未纠正的第 3 个文档）；至于 **Required review**
+还是 **Spot-check** 是否有行，取决于 judge 对这些 prediction 的判断。
+演示交接记录里，停车收据 PDF 上的实际行为是：shop_name → `down`
+（required review），issue_date / total_amount → `up`
+（spot-check 候选）。
 
 ---
 
-## 8. End-of-walk health check
+## 8. 演示结束健康检查
 
 ```bash
-./scripts/release-checklist.sh                        # 4 pass, 1 skip (E2E)
-EMERGE_E2E=1 ./scripts/release-checklist.sh           # 5 pass — backend on :8000 required
+./scripts/release-checklist.sh                        # 4 pass, 1 skip（E2E）
+EMERGE_E2E=1 ./scripts/release-checklist.sh           # 5 pass — 需要后端运行在 :8000
 ```
 
-The E2E version replays steps 2–7 in headless Chromium (~21 s with warm
-Gemini, 60–120 s cold). It does the same thing this doc does, but with
-synthetic plaintext keys captured via Playwright's `page.request` — the
-spec asserts the plaintext never traverses a logged form input.
+E2E 版本会在 headless Chromium 中重放步骤 2–7
+（Gemini 热启动时约 21 秒，冷启动时 60–120 秒）。
+它做的事情和这份文档完全一样，但使用的是 Playwright 的
+`page.request` 捕获的 synthetic plaintext keys——spec 断言明文不会经过任何
+已记录的表单输入。
 
 ---
 
-## 9. Common issues
+## 9. 常见问题
 
-- **`extracted` rows never appear, error_message empty in DB.** Almost always
-  `httpx.ConnectError` — provider unreachable. Restart backend with
-  `https_proxy` / `http_proxy` set, or check `GOOGLE_API_KEY`.
-- **`POST /extract/{api_code}` returns 403.** The project was unpublished, or
-  the `X-Api-Key` doesn't match. Re-publish from the API Console; if the
-  key was lost (one-time reveal), revoke and create a new one.
-- **API Console "Activate for API" button disabled.** Schema not locked, or
-  empty. Check `/projects/:id/schema`.
-- **Readiness panel keeps showing "schema_not_lock_candidate".** Need ≥2 saved
-  corrections sharing at least one stable field name.
-- **`/judge` returns 500.** Production wiring needs `default_model_pro` set
-  in `backend/.env` (defaults to `gemini-3.1-pro-preview`) and the same
-  provider connectivity as runtime extract. If the model name is stale,
-  override it in `.env`.
-- **Duplicate `api_code` blocking alembic 0015.** Run
+- **`extracted` 行一直不出现，DB 里 `error_message` 为空。**
+  大概率是 `httpx.ConnectError` —— 提供方不可达。
+  带上 `https_proxy` / `http_proxy` 重启后端，或者检查 `GOOGLE_API_KEY`。
+- **`POST /extract/{api_code}` 返回 403。**
+  项目没有发布，或者 `X-Api-Key` 不匹配。重新到 API Console 发布一次；
+  如果 key 丢了（一次性揭示），就撤销并创建一个新的。
+- **API Console 的 “Activate for API” 按钮禁用。**
+  schema 还没有锁定，或者是空的。检查 `/projects/:id/schema`。
+- **Readiness 面板一直显示 “schema_not_lock_candidate”。**
+  需要至少 2 次已保存纠正，并且这些纠正共享至少一个稳定字段名。
+- **`/judge` 返回 500。**
+  生产侧接线需要在 `backend/.env` 中设置 `default_model_pro`
+  （默认值是 `gemini-3.1-pro-preview`），并且需要与运行时 extract 相同的提供方连通性。
+  如果模型名已经过期，就在 `.env` 里覆盖它。
+- **重复的 `api_code` 阻塞 alembic 0015。**
+  先执行
   `cd backend && uv run python ../scripts/check_api_code_uniqueness.py`
-  before `alembic upgrade head` — the script prints any offending values.
+  再运行 `alembic upgrade head`——脚本会打印所有冲突值。
 
 ---
 
-## 10. Reset between demos
+## 10. 演示之间的重置
 
 ```bash
-# nuclear reset — wipes the local DB and uploaded files. Confirm path first.
+# 核弹级重置 — 删除本地数据库和上传文件。先确认路径。
 rm backend/data/emerge.db backend/data/uploads/* 2>/dev/null
 cd backend && uv run alembic upgrade head
 ```
 
-The `.env` file is preserved (it's gitignored; not in `data/`).
+`.env` 文件会保留（它在 gitignore 中；不在 `data/` 里）。
