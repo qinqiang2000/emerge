@@ -43,9 +43,14 @@ def vibe_check_predictions_query(
     strict pool once the schema is locked. See `vibe_check_includes_corrected`.
     """
     has_prediction = exists().where(Prediction.document_id == Document.id)
+    # Dogfood follow-up #1: integrator-traffic documents (source='public_api')
+    # must not enter the vibe-check pool — they would dilute the editor's
+    # review/correction signal with predictions the user never sees.
     if ignore_annotations:
         return select(Document.id).where(
-            Document.project_id == project_id, has_prediction
+            Document.project_id == project_id,
+            Document.source == "lab",
+            has_prediction,
         )
     latest_pred_id = (
         select(func.max(Prediction.id))
@@ -65,7 +70,10 @@ def vibe_check_predictions_query(
         )
     )
     return select(Document.id).where(
-        Document.project_id == project_id, has_prediction, ~covered_by_annotation
+        Document.project_id == project_id,
+        Document.source == "lab",
+        has_prediction,
+        ~covered_by_annotation,
     )
 
 

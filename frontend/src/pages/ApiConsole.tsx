@@ -470,12 +470,12 @@ function SnippetsPanel({ apiCode }: { apiCode: string | null }) {
   const code = apiCode ?? "your-api-code";
   const curl = useMemo(
     () =>
-      `curl -X POST "https://api.emerge.dev/extract/${code}" \\\n  -H "X-Api-Key: $EMERGE_API_KEY" \\\n  -F "file=@invoice.pdf"`,
+      `curl -X POST "https://api.emerge.dev/extract/${code}" \\\n  -H "X-Api-Key: $EMERGE_API_KEY" \\\n  -F "file=@invoice.pdf"\n# {request_id, prediction_id, project_version_id, output: {entities: [...]}}`,
     [code],
   );
   const py = useMemo(
     () =>
-      `import os, requests\nresp = requests.post(\n  f"https://api.emerge.dev/extract/${code}",\n  headers={"X-Api-Key": os.environ["EMERGE_API_KEY"]},\n  files={"file": open("invoice.pdf", "rb")},\n)\nprint(resp.json())`,
+      `import os, requests\nresp = requests.post(\n  f"https://api.emerge.dev/extract/${code}",\n  headers={"X-Api-Key": os.environ["EMERGE_API_KEY"]},\n  files={"file": open("invoice.pdf", "rb")},\n).json()\nentities = resp["output"]["entities"]\nrequest_id = resp["request_id"]   # echo back as feedback's request_id`,
     [code],
   );
   return (

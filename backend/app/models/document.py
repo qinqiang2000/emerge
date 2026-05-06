@@ -14,13 +14,20 @@ class DocumentStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class DocumentSource(str, Enum):
+    LAB = "lab"
+    PUBLIC_API = "public_api"
+
+
 _VALID_STATUSES = ",".join(f"'{s.value}'" for s in DocumentStatus)
+_VALID_SOURCES = ",".join(f"'{s.value}'" for s in DocumentSource)
 
 
 class Document(Base, TimestampMixin):
     __tablename__ = "documents"
     __table_args__ = (
         CheckConstraint(f"status IN ({_VALID_STATUSES})", name="ck_document_status"),
+        CheckConstraint(f"source IN ({_VALID_SOURCES})", name="ck_document_source"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -34,4 +41,10 @@ class Document(Base, TimestampMixin):
     data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=DocumentStatus.UPLOADED.value
+    )
+    source: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=DocumentSource.LAB.value,
+        index=True,
     )

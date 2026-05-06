@@ -11,7 +11,7 @@ from app.engine.provider import Provider
 from app.engine.providers import get_provider_dep
 from app.errors import EmergeError, ErrorCode
 from app.models.api_key import ApiKey
-from app.models.document import Document, DocumentStatus
+from app.models.document import Document, DocumentSource, DocumentStatus
 from app.models.project import Project
 from app.schemas.annotation import FeedbackIn
 from app.services.api_key import parse_prefix, verify_api_key
@@ -27,10 +27,21 @@ from app.services.storage import save_upload
 router = APIRouter(tags=["public"])
 
 
-class PublicExtractOut(BaseModel):
+class PublicExtractOutput(BaseModel):
+    """Inner envelope for the public extract response.
+
+    Wrapping `entities` here leaves room for `output.confidence` /
+    `output.field_evidence` etc. without another shape churn (dogfood #2).
+    """
+
     entities: list[dict]
-    project_version: int
+
+
+class PublicExtractOut(BaseModel):
+    request_id: int
     prediction_id: int
+    project_version_id: int
+    output: PublicExtractOutput
 
 
 class PublicFeedbackOut(BaseModel):
@@ -105,6 +116,11 @@ async def public_extract(
         byte_size=rec.byte_size,
         uploaded_by=0,  # external API caller — no user
         status=DocumentStatus.UPLOADED.value,
+        # Spec §7.1 / dogfood follow-up #1: public-API traffic must not show
+        # up in the editor's Documents list, vibe-check pool, or Readiness
+        # annotated_* counts. The typed `source` column is authoritative;
+        # `data["source"]` stays for back-compat audit only.
+        source=DocumentSource.PUBLIC_API.value,
         data={"source": "public_api", "api_code": api_code},
     )
     session.add(doc)
@@ -121,9 +137,10 @@ async def public_extract(
     except ValueError as exc:
         raise EmergeError(ErrorCode.CONFLICT, status_code=409, message_override=str(exc)) from exc
     return PublicExtractOut(
-        entities=pred.output,
-        project_version=pred.project_version_id,
+        request_id=pred.id,
         prediction_id=pred.id,
+        project_version_id=pred.project_version_id,
+        output=PublicExtractOutput(entities=pred.output),
     )
 
 

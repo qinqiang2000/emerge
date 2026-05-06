@@ -105,6 +105,12 @@ async def build_readiness(
             .join(Document, Document.id == Annotation.document_id)
             .where(
                 Document.project_id == project_id,
+                # Dogfood #1: only Lab-side Annotations count toward the
+                # editor's evidence coverage. Counterexamples (queried below)
+                # come from public feedback regardless of Document.source, so
+                # this filter is intentionally only on the saved-Annotation
+                # leg.
+                Document.source == "lab",
                 Annotation.role == AnnotationRole.NONE.value,
                 Annotation.status == AnnotationStatus.SAVED.value,
             )

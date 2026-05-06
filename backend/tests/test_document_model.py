@@ -1,6 +1,6 @@
 import pytest
 
-from app.models.document import Document, DocumentStatus
+from app.models.document import Document, DocumentSource, DocumentStatus
 from app.models.project import Project
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -50,6 +50,42 @@ async def test_document_invalid_status_rejected(db_session):
         byte_size=10,
         uploaded_by=uid,
         status="bogus",
+    )
+    db_session.add(d)
+    with pytest.raises(Exception):
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_document_source_defaults_to_lab(db_session):
+    pid, uid = await _make_project(db_session)
+    d = Document(
+        project_id=pid,
+        filename="r.pdf",
+        file_path="/tmp/r.pdf",
+        mime_type="application/pdf",
+        page_count=0,
+        byte_size=10,
+        uploaded_by=uid,
+    )
+    db_session.add(d)
+    await db_session.commit()
+    await db_session.refresh(d)
+    assert d.source == DocumentSource.LAB.value
+
+
+@pytest.mark.asyncio
+async def test_document_source_rejects_unknown(db_session):
+    pid, uid = await _make_project(db_session)
+    d = Document(
+        project_id=pid,
+        filename="x.pdf",
+        file_path="/tmp/x.pdf",
+        mime_type="application/pdf",
+        page_count=0,
+        byte_size=10,
+        uploaded_by=uid,
+        source="floofs",
     )
     db_session.add(d)
     with pytest.raises(Exception):
