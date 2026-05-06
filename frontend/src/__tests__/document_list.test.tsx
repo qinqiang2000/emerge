@@ -241,6 +241,6 @@ describe("DocumentListPage", () => {
     mockGet(() => []);
     renderPage();
     await settle();
-    expect(screen.getByText(/no documents/i)).toBeInTheDocument();
+    expect(screen.getByText(/no documents yet/i)).toBeInTheDocument();
   });
 });

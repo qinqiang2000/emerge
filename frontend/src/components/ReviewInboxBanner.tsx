@@ -59,7 +59,20 @@ function ReviewInboxBannerBody({
   const t = useT();
   const next: ReviewItemOut | null =
     data.required_review[0] ?? data.spot_check[0] ?? null;
-  const allEmpty = data.required_review.length === 0 && data.spot_check.length === 0;
+  const queueEmpty = data.required_review.length === 0 && data.spot_check.length === 0;
+  // Distinguish three empty states so the user knows which lever to pull:
+  //   1. no docs at all → upload/extract path
+  //   2. docs exist but no judge verdicts → run judge
+  //   3. judge ran and everyone is clean → all caught up
+  // Without an explicit `judged_count` from the backend we use the
+  // spot-check sample as a proxy for "judge has run" — it's only populated
+  // from up_only verdicts, so its presence implies at least one judge pass.
+  const emptyKey =
+    data.all.length === 0
+      ? "review.empty_pool"
+      : queueEmpty && data.spot_check.length === 0
+      ? "review.needs_judge"
+      : "review.all_caught_up";
 
   return (
     <section
@@ -115,12 +128,13 @@ function ReviewInboxBannerBody({
         </div>
       </dl>
 
-      {allEmpty ? (
+      {queueEmpty ? (
         <p
           data-testid="review-all-caught-up"
+          data-empty-state={emptyKey.split(".")[1]}
           className="rounded-sm border border-border-default bg-bg-muted p-2 text-xs text-fg-muted"
         >
-          {t("review.all_caught_up")}
+          {t(emptyKey, { count: data.all.length })}
         </p>
       ) : null}
     </section>

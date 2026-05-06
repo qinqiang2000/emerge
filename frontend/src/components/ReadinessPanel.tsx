@@ -94,7 +94,10 @@ function ReadinessBody({ data }: { data: APIReadinessOut }) {
         <MaturityRow m={data.schema_maturity} />
         <RegressionRow r={data.regression_health} />
       </dl>
-      <RiskyFieldsRow risky={data.risky_fields} />
+      <RiskyFieldsRow
+        risky={data.risky_fields}
+        observationCount={data.quality_estimate.observation_count}
+      />
       {noProductionFeedback ? (
         <p
           data-testid="readiness-no-feedback"
@@ -111,15 +114,26 @@ function ReadinessBody({ data }: { data: APIReadinessOut }) {
 
 function QualityRow({ q }: { q: QualityEstimate }) {
   const t = useT();
-  const point = pct(q.judge_precision);
-  const half = pct(Math.max(0, (q.ci_high - q.ci_low) / 2));
+  // With zero judge observations the score is just the Beta prior — surfacing
+  // it as a number falsely implies the model has been measured. Show "no
+  // signal" copy until the first verdict lands.
+  const hasSignal = q.observation_count > 0;
   return (
     <div data-testid="readiness-quality" className="flex flex-col gap-0.5">
       <dt className="text-xs uppercase tracking-wide text-fg-muted">
         {t("readiness.quality_label")}
       </dt>
       <dd className="text-fg-primary">
-        <span>{t("readiness.quality_value", { point, half })}</span>{" "}
+        {hasSignal ? (
+          <span>
+            {t("readiness.quality_value", {
+              point: pct(q.judge_precision),
+              half: pct(Math.max(0, (q.ci_high - q.ci_low) / 2)),
+            })}
+          </span>
+        ) : (
+          <span className="text-fg-muted">{t("readiness.quality_no_signal")}</span>
+        )}{" "}
         <span className="text-xs text-fg-muted">
           {t("readiness.quality_meta", {
             obs: q.observation_count,
@@ -200,13 +214,16 @@ function RegressionRow({ r }: { r: RegressionHealth }) {
       </div>
     );
   }
-  // Backend exposes counterexample_component as a 0..1 ratio rather than a
-  // raw passing count. Approximate `passing` from the component when it is
-  // present; when the backend reports total > 0 with no component, treat the
-  // pass count as not yet computed instead of pretending 0/total.
+  // Only render the "passing N/total" line when the backend has actually
+  // measured it (status is passing or failing). For status="unknown" the
+  // component is a fallback constant — pretending it's a measurement
+  // contradicts the "not yet computed" status line right below it.
+  const measured = r.status === "passing" || r.status === "failing";
   const component = r.counterexample_component;
-  const hasComponent = component !== null && component !== undefined;
-  const passing = hasComponent ? Math.round(component * total) : null;
+  const passing =
+    measured && component !== null && component !== undefined
+      ? Math.round(component * total)
+      : null;
   const statusToneClass =
     r.status === "failing"
       ? "text-status-error"
@@ -237,18 +254,29 @@ function RegressionRow({ r }: { r: RegressionHealth }) {
   );
 }
 
-function RiskyFieldsRow({ risky }: { risky: RiskyField[] }) {
+function RiskyFieldsRow({
+  risky,
+  observationCount,
+}: {
+  risky: RiskyField[];
+  observationCount: number;
+}) {
   const t = useT();
   const sorted = [...risky].sort((a, b) => b.count - a.count);
   const top = sorted.slice(0, RISKY_TOP_N);
   const overflow = Math.max(0, sorted.length - RISKY_TOP_N);
+  // Without any judge observations, an empty risky list isn't an "all clear"
+  // — it's no signal at all. Differentiate so the panel doesn't read as
+  // false reassurance on a fresh project.
+  const emptyKey =
+    observationCount === 0 ? "readiness.risky_no_signal" : "readiness.risky_empty";
   return (
     <div data-testid="readiness-risky" className="flex flex-col gap-1">
       <span className="text-xs uppercase tracking-wide text-fg-muted">
         {t("readiness.risky_label")}
       </span>
       {top.length === 0 ? (
-        <span className="text-xs text-fg-muted">{t("readiness.risky_empty")}</span>
+        <span className="text-xs text-fg-muted">{t(emptyKey)}</span>
       ) : (
         <ul className="flex flex-wrap items-center gap-2">
           {top.map((f) => (

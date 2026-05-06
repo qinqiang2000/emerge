@@ -128,7 +128,7 @@ describe("ReviewInboxBanner", () => {
     expect(screen.getByTestId("probe").textContent).toBe("/projects/7/studio/31");
   });
 
-  it("disables Review next and shows 'All caught up' when required and spot_check are empty", async () => {
+  it("disables Review next and shows 'waiting on the judge' when docs exist but no verdicts", async () => {
     mockQueue({
       required_review: [],
       spot_check: [],
@@ -140,18 +140,38 @@ describe("ReviewInboxBanner", () => {
     renderBannerAt("/projects/7");
     await settleReview();
     const banner = await screen.findByTestId("review-inbox-banner");
-    expect(within(banner).getByText(/all caught up/i)).toBeInTheDocument();
+    // Pre-judge "all caught up" copy was misleading — now we ask the user
+    // to actually run the judge.
+    expect(within(banner).getByText(/waiting on the judge|run.*judge/i)).toBeInTheDocument();
+    expect(within(banner).queryByText(/all caught up/i)).not.toBeInTheDocument();
     expect(within(banner).queryByText(/0\s*of\s*0/i)).not.toBeInTheDocument();
     const button = within(banner).getByRole("button", { name: /review next/i });
     expect(button).toBeDisabled();
   });
 
-  it("never renders '0 of 0' even when the queue is fully empty", async () => {
+  it("shows 'all caught up' only when the judge has run (spot_check populated) and required is empty", async () => {
+    mockQueue({
+      required_review: [],
+      spot_check: [{ id: 51, filename: "clean.pdf", flagged_fields: [] }],
+      all: [{ id: 51, filename: "clean.pdf", flagged_fields: [] }],
+      schema_locked: true,
+    });
+    renderBannerAt("/projects/7");
+    await settleReview();
+    // With spot_check non-empty, queueEmpty is false → no banner-level empty
+    // message at all (counts speak for themselves). This is correct: the
+    // "all caught up" callout only appears when both sections are empty.
+    const banner = await screen.findByTestId("review-inbox-banner");
+    expect(within(banner).queryByTestId("review-all-caught-up")).not.toBeInTheDocument();
+  });
+
+  it("renders 'empty pool' when no docs exist at all", async () => {
     mockQueue(EMPTY_QUEUE);
     renderBannerAt("/projects/7");
     await settleReview();
     const banner = await screen.findByTestId("review-inbox-banner");
     expect(banner.textContent ?? "").not.toMatch(/0\s*of\s*0/i);
+    expect(within(banner).getByText(/no documents in the vibe-check pool|extract.*to start/i)).toBeInTheDocument();
   });
 
   it("clears stale data when switching projects (no flash of previous counts)", async () => {
