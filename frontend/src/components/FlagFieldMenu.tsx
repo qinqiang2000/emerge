@@ -7,12 +7,11 @@ import { Input } from "@/components/ui/Input";
 import { useT } from "@/i18n/useT";
 import { useStudio } from "@/stores/studio";
 
-// Dogfood follow-up #3: editing the field's textbox is the value-correction
-// path. This menu exists for issues that aren't a value-fix — flag without
-// supplying a corrected value so AutoResearch can later parse the notes
-// suffix and treat the field as needing attention.
+// Dogfood follow-up #3: editing the field's textbox IS the value-correction
+// path. This menu only carries issue types that can't be expressed as a
+// value-fix — `wrong_value` is intentionally absent so the dual-affordance
+// the dogfood walk complained about doesn't sneak back in via the menu.
 const ISSUE_TYPES = [
-  "wrong_value",
   "missing_field",
   "extra_field",
   "wrong_entity_count",
@@ -32,7 +31,7 @@ export function FlagFieldMenu({
   const issueId = useId();
   const commentId = useId();
   const [open, setOpen] = useState(false);
-  const [issueType, setIssueType] = useState<string>("wrong_value");
+  const [issueType, setIssueType] = useState<string>("missing_field");
   const [comment, setComment] = useState("");
   const saving = useStudio((s) => s.saving);
   const flagField = useStudio((s) => s.flagField);

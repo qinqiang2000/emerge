@@ -169,7 +169,6 @@
       "cancel_button": "Cancel",
       "flag_button": "Flag",
       "issue_type": {
-        "wrong_value": "Wrong value",
         "missing_field": "Missing / N/A",
         "extra_field": "Extra field",
         "wrong_entity_count": "Wrong entity count",

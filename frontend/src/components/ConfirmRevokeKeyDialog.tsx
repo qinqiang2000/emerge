@@ -1,13 +1,12 @@
+import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
+
 import { Button } from "@/components/ui/Button";
-import { Dialog } from "@/components/ui/Dialog";
 import { useT } from "@/i18n/useT";
 
-// Dogfood follow-up #5: Revoke is destructive with no recall path —
-// gating it behind a confirmation matches the rest of the Danger zone
-// semantics. Reusing the existing Dialog wrapper keeps the dependency
-// surface unchanged; if a future incident shows we need
-// role="alertdialog" / focus-trap escape semantics, install
-// @radix-ui/react-alert-dialog then.
+// Dogfood follow-up #5: Revoke is destructive with no recall path. We use
+// AlertDialog (not plain Dialog) so the surface advertises destructive
+// intent via role="alertdialog" and Radix enforces the focus-trap +
+// escape-to-cancel ergonomics expected for a destructive confirmation.
 export function ConfirmRevokeKeyDialog({
   open,
   onOpenChange,
@@ -21,24 +20,30 @@ export function ConfirmRevokeKeyDialog({
 }) {
   const t = useT();
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t("api_console.revoke_dialog_title")}
-    >
-      <div className="space-y-3 text-sm">
-        <p className="text-fg-primary">
-          {t("api_console.revoke_dialog_body", { name: keyName })}
-        </p>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button variant="danger" onClick={onConfirm}>
-            {t("api_console.revoke_dialog_confirm")}
-          </Button>
-        </div>
-      </div>
-    </Dialog>
+    <RadixAlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RadixAlertDialog.Portal>
+        <RadixAlertDialog.Overlay className="fixed inset-0 bg-overlay/40" />
+        <RadixAlertDialog.Content
+          className="fixed left-1/2 top-1/2 w-[min(36rem,90vw)] -translate-x-1/2 -translate-y-1/2 rounded-md border border-border-default bg-bg-surface p-6 text-fg-primary shadow-lg"
+        >
+          <RadixAlertDialog.Title className="mb-3 text-lg font-semibold">
+            {t("api_console.revoke_dialog_title")}
+          </RadixAlertDialog.Title>
+          <RadixAlertDialog.Description className="text-sm text-fg-primary">
+            {t("api_console.revoke_dialog_body", { name: keyName })}
+          </RadixAlertDialog.Description>
+          <div className="mt-4 flex justify-end gap-2">
+            <RadixAlertDialog.Cancel asChild>
+              <Button variant="secondary">{t("common.cancel")}</Button>
+            </RadixAlertDialog.Cancel>
+            <RadixAlertDialog.Action asChild>
+              <Button variant="danger" onClick={onConfirm}>
+                {t("api_console.revoke_dialog_confirm")}
+              </Button>
+            </RadixAlertDialog.Action>
+          </div>
+        </RadixAlertDialog.Content>
+      </RadixAlertDialog.Portal>
+    </RadixAlertDialog.Root>
   );
 }

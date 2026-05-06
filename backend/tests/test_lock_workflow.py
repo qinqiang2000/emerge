@@ -26,6 +26,63 @@ async def test_lock_status_initially_blocked(client):
 
 
 @pytest.mark.asyncio
+async def test_lock_status_excludes_lab_flag_only_annotations(client, db_session):
+    """Dogfood follow-up #3 + CSE C2: `flagField` writes Annotations whose
+    `output` is identical to the prediction (the user only flagged an
+    issue_type via `notes`). Counting those toward the "Need at least 2
+    saved corrections" threshold lets a user game the lock by ⋮-flagging
+    two fields without making a single real value correction. Pin the
+    rule: a row whose notes carries the `[lab_flag]=` tag does NOT count
+    as a saved correction.
+    """
+    h, pid = await _auth_and_project(client, email="lkflag@lk.com")
+    payload = {
+        "schema": [
+            {"name": "shop_name", "type": "string", "description": "d"},
+            {"name": "total", "type": "number", "description": "d"},
+        ],
+        "global_notes": "",
+        "model_id": "x",
+    }
+    await client.patch(f"/api/v1/projects/{pid}/schema", json=payload, headers=h)
+
+    user_id = (
+        await db_session.execute(select(User).order_by(User.id).limit(1))
+    ).scalar_one().id
+    for fname in ("a.pdf", "b.pdf"):
+        d = Document(
+            project_id=pid,
+            filename=fname,
+            file_path=f"/tmp/{fname}",
+            mime_type="application/pdf",
+            page_count=1,
+            byte_size=10,
+            uploaded_by=user_id,
+        )
+        db_session.add(d)
+        await db_session.flush()
+        db_session.add(
+            Annotation(
+                document_id=d.id,
+                output=[{"shop_name": "X", "total": 1}],
+                role=AnnotationRole.NONE.value,
+                status=AnnotationStatus.SAVED.value,
+                created_by=user_id,
+                last_modified_by=user_id,
+                # The flagField client encodes the issue_type into notes
+                # alongside an unchanged output — must not pass for lock.
+                notes='[lab_flag]={"issue_type":"missing_field"}',
+            )
+        )
+    await db_session.commit()
+
+    status = await client.get(f"/api/v1/projects/{pid}/lock-status", headers=h)
+    body = status.json()
+    assert body["can_lock"] is False
+    assert "need at least 2" in body["reason"].lower()
+
+
+@pytest.mark.asyncio
 async def test_lock_succeeds_when_two_corrections_agree(client, db_session):
     h, pid = await _auth_and_project(client, email="lk2@lk.com")
     # set schema first

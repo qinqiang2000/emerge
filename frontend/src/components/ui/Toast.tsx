@@ -49,7 +49,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         ))}
         <RadixToast.Viewport
           data-testid="toast-viewport"
-          className="fixed right-4 top-4 z-50 flex w-80 max-w-[100vw] flex-col gap-2 outline-none"
+          // top-16 keeps the pill visible without overlapping the App
+          // header (which sits at the very top-right and hosts
+          // ThemeToggle). z-50 stays so it floats above all page chrome.
+          className="fixed right-4 top-16 z-50 flex w-80 max-w-[100vw] flex-col gap-2 outline-none"
         />
       </RadixToast.Provider>
     </ToastCtx.Provider>

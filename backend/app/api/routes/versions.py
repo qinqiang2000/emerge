@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_user, current_workspace_id
@@ -96,6 +96,19 @@ async def lock_status(
                 Document.project_id == project_id,
                 Annotation.role == AnnotationRole.NONE.value,
                 Annotation.status == AnnotationStatus.SAVED.value,
+                # Dogfood follow-up #3 / CSE C2: `flagField` writes rows
+                # whose `output` matches the prediction and whose `notes`
+                # carries `[lab_flag]={...}`. Those are flag-without-
+                # correcting markers, not real corrections — exclude them
+                # from the lock threshold so a user can't game the gate by
+                # ⋮-flagging two fields. Until Annotation gets a typed
+                # `kind` column the notes-prefix is the available
+                # discriminator. NB: SQL `NULL NOT LIKE` evaluates to NULL
+                # (truthy-excluding) so notes IS NULL must be explicit.
+                or_(
+                    Annotation.notes.is_(None),
+                    ~Annotation.notes.like("[lab_flag]=%"),
+                ),
             )
         )
     ).scalars().all()

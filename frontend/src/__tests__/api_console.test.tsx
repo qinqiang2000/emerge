@@ -282,17 +282,13 @@ describe("ApiConsolePage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /^revoke$/i }),
     );
-    // Dialog body must interpolate the key name (KEYS[0].name === "default").
-    expect(
-      await screen.findByText(/revoke key 'default'/i),
-    ).toBeInTheDocument();
+    // Radix AlertDialog gives us role="alertdialog" — scope all
+    // subsequent queries inside it instead of relying on positional
+    // ordering of duplicate "Revoke" labels.
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/revoke key 'default'/i)).toBeInTheDocument();
     expect(del).not.toHaveBeenCalled();
-
-    // Click the dialog's primary Revoke button (now there are two; pick the
-    // second which is inside the dialog).
-    const revokeButtons = screen.getAllByRole("button", { name: /^revoke$/i });
-    const dialogRevoke = revokeButtons[revokeButtons.length - 1]!;
-    fireEvent.click(dialogRevoke);
+    fireEvent.click(within(dialog).getByRole("button", { name: /^revoke$/i }));
 
     await waitFor(() =>
       expect(screen.queryByText("ek_abc")).not.toBeInTheDocument(),

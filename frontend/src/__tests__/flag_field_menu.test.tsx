@@ -60,6 +60,27 @@ describe("FlagFieldMenu (dogfood follow-up #3)", () => {
     ).toBeInTheDocument();
   });
 
+  it("does NOT offer 'wrong_value' (textbox edit is the value-correction path)", () => {
+    // dogfood follow-up #3 explicitly: editing the textbox is the only
+    // value-correction path. Surfacing wrong_value in the flag-without-
+    // correcting menu re-creates the dual-affordance the dogfood walk
+    // complained about — pin the absence so a later "complete the enum"
+    // refactor can't slip it back in.
+    render(
+      <FlagFieldMenu projectId={9} entityIndex={0} fieldName="total" />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /more actions for total/i }),
+    );
+    const select = screen.getByLabelText(/issue type/i) as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).not.toContain("wrong_value");
+    // The default must be a non-value-fix kind so a user who clicks
+    // through without changing the dropdown can't accidentally re-create
+    // the dual path.
+    expect(select.value).toBe("missing_field");
+  });
+
   it("flag-without-correcting POSTs an Annotation with unchanged output and notes-encoded issue_type", async () => {
     const post = vi.spyOn(api, "post").mockResolvedValue({ data: {} });
     vi.spyOn(api, "get").mockResolvedValue({ data: DOC });
