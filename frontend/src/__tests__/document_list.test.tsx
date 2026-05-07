@@ -5,10 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { DocumentListPage } from "@/pages/DocumentList";
 import { useDocuments, type DocumentRow } from "@/stores/documents";
+import { useProjects, type Project } from "@/stores/projects";
 import { useReadiness } from "@/stores/readiness";
 import { useReview } from "@/stores/review";
 import type { APIReadinessOut } from "@/types/readiness";
 import type { ReviewQueueOut } from "@/types/review";
+
+vi.mock("@/components/ReadinessPanel", () => ({
+  ReadinessPanel: () => <section data-testid="readiness-panel" />,
+}));
+
+vi.mock("@/components/ReviewInboxBanner", () => ({
+  ReviewInboxBanner: () => <section data-testid="review-inbox-banner" />,
+}));
 
 const READINESS_STUB: APIReadinessOut = {
   quality_estimate: {
@@ -51,6 +60,41 @@ const REVIEW_STUB: ReviewQueueOut = {
   schema_locked: true,
 };
 
+const STALE_READINESS: APIReadinessOut = {
+  ...READINESS_STUB,
+  evidence_coverage: {
+    ...READINESS_STUB.evidence_coverage,
+    annotated_docs: 4,
+  },
+};
+
+const STALE_REVIEW: ReviewQueueOut = {
+  required_review: [
+    {
+      id: 999,
+      filename: "previous-project.pdf",
+      flagged_fields: ["total"],
+    },
+  ],
+  spot_check: [],
+  all: [],
+  schema_locked: true,
+};
+
+const PROJECT_STUB: Project = {
+  id: 7,
+  workspace_id: 1,
+  name: "Receipts",
+  project_type: "receipts",
+  template_id: null,
+  active_version_id: 11,
+  published_version_id: null,
+  api_code: null,
+  api_published_at: null,
+  created_at: "2026-05-04T09:00:00Z",
+  created_by: 1,
+};
+
 function mockGet(handler?: (url: string) => unknown) {
   return vi.spyOn(api, "get").mockImplementation((url: string) => {
     if (url.endsWith("/readiness")) {
@@ -58,6 +102,9 @@ function mockGet(handler?: (url: string) => unknown) {
     }
     if (url.endsWith("/review-queue")) {
       return Promise.resolve({ data: REVIEW_STUB });
+    }
+    if (url === "/api/v1/projects/7") {
+      return Promise.resolve({ data: PROJECT_STUB });
     }
     if (handler) {
       const data = handler(url);
@@ -113,6 +160,7 @@ async function settle() {
     expect(s.extracting).toBe(false);
     expect(useReadiness.getState().loading).toBe(false);
     expect(useReview.getState().loading).toBe(false);
+    expect(useProjects.getState().loading).toBe(false);
   });
 }
 
@@ -127,6 +175,11 @@ describe("DocumentListPage", () => {
     });
     useReadiness.setState({ data: READINESS_STUB, loading: false, error: null });
     useReview.setState({ data: REVIEW_STUB, loading: false, error: null });
+    useProjects.setState({
+      rows: [PROJECT_STUB],
+      loading: false,
+      error: null,
+    });
     mockGet(() => [UPLOADED, EXTRACTED]);
   });
   afterEach(() => {
@@ -140,15 +193,45 @@ describe("DocumentListPage", () => {
     });
     useReadiness.setState({ data: null, loading: false, error: null });
     useReview.setState({ data: null, loading: false, error: null });
+    useProjects.setState({
+      rows: [],
+      loading: false,
+      error: null,
+    });
   });
 
   it("renders filename and status for each row", async () => {
     renderPage();
     await settle();
+    expect(
+      await screen.findByTestId("project-journey-stepper"),
+    ).toBeInTheDocument();
     expect(screen.getByText("receipt-001.pdf")).toBeInTheDocument();
     expect(screen.getByText("receipt-002.pdf")).toBeInTheDocument();
-    expect(screen.getByText("uploaded")).toBeInTheDocument();
-    expect(screen.getByText("extracted")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded")).toBeInTheDocument();
+    expect(screen.getByText("Draft ready")).toBeInTheDocument();
+    expect(screen.queryByText("extracted")).not.toBeInTheDocument();
+  });
+
+  it("does not use stale previous-project readiness or review data for the journey", async () => {
+    useReadiness.setState({
+      data: STALE_READINESS,
+      loading: false,
+      error: null,
+    });
+    useReview.setState({ data: STALE_REVIEW, loading: false, error: null });
+
+    renderPage();
+
+    const reviewButton = screen.getByRole("button", {
+      name: /review examples/i,
+    });
+    expect(reviewButton).toBeDisabled();
+    fireEvent.click(reviewButton);
+    expect(screen.queryByText("studio-routed")).not.toBeInTheDocument();
+
+    await settle();
+    expect(reviewButton).toBeEnabled();
   });
 
   it("clicking a row navigates to /projects/:id/studio/:did", async () => {
