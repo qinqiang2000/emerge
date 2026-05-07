@@ -136,6 +136,17 @@ const EXTRACTED: DocumentRow = {
   created_at: "2026-05-04T11:00:00Z",
 };
 
+const PREVIOUS_PROJECT_EXTRACTED: DocumentRow = {
+  id: 901,
+  project_id: 6,
+  filename: "previous-project.pdf",
+  mime_type: "application/pdf",
+  page_count: 1,
+  byte_size: 11111,
+  status: "extracted",
+  created_at: "2026-05-03T11:00:00Z",
+};
+
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={["/projects/7"]}>
@@ -232,6 +243,66 @@ describe("DocumentListPage", () => {
 
     await settle();
     expect(reviewButton).toBeEnabled();
+  });
+
+  it("does not use stale previous-project document rows for the journey", async () => {
+    vi.restoreAllMocks();
+    useDocuments.setState({
+      rows: [PREVIOUS_PROJECT_EXTRACTED],
+      loading: false,
+      extracting: false,
+      uploading: false,
+      error: null,
+    });
+    mockGet(() => []);
+
+    renderPage();
+
+    expect(
+      screen.getByRole("button", { name: /extract drafts/i }),
+    ).toBeDisabled();
+    expect(screen.queryByText("previous-project.pdf")).not.toBeInTheDocument();
+  });
+
+  it("does not use late previous-project readiness or review responses for the journey", async () => {
+    let resolveReadiness6: (value: { data: APIReadinessOut }) => void = () => {};
+    let resolveReview6: (value: { data: ReviewQueueOut }) => void = () => {};
+    const readiness6 = new Promise<{ data: APIReadinessOut }>((resolve) => {
+      resolveReadiness6 = resolve;
+    });
+    const review6 = new Promise<{ data: ReviewQueueOut }>((resolve) => {
+      resolveReview6 = resolve;
+    });
+
+    const get = vi.spyOn(api, "get").mockImplementation((url: string) => {
+      if (url === "/api/v1/projects/6/readiness") return readiness6;
+      if (url === "/api/v1/projects/6/review-queue") return review6;
+      if (url === "/api/v1/projects/7/readiness") {
+        return Promise.resolve({ data: READINESS_STUB });
+      }
+      if (url === "/api/v1/projects/7/review-queue") {
+        return Promise.resolve({ data: REVIEW_STUB });
+      }
+      if (url === "/api/v1/projects/7") {
+        return Promise.resolve({ data: PROJECT_STUB });
+      }
+      return Promise.resolve({ data: [UPLOADED, EXTRACTED] });
+    });
+
+    const staleReadinessLoad = useReadiness.getState().load(6);
+    const staleReviewLoad = useReview.getState().load(6);
+
+    renderPage();
+    await settle();
+
+    resolveReadiness6({ data: STALE_READINESS });
+    resolveReview6({ data: STALE_REVIEW });
+    await staleReadinessLoad;
+    await staleReviewLoad;
+
+    fireEvent.click(screen.getByRole("button", { name: /review examples/i }));
+    expect(screen.queryByText("studio-routed")).not.toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith("/api/v1/projects/7/review-queue");
   });
 
   it("clicking a row navigates to /projects/:id/studio/:did", async () => {
